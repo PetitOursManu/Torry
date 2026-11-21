@@ -1,0 +1,34 @@
+# Torry for Emby — exemple Docker Compose (utilisable tel quel dans Coolify : « Docker Compose » / « Empty Compose »).
+#
+# Principe :
+#   - un SEUL volume hôte (/srv/torry) monté sur /downloads, contenant incomplete/ et complete/ :
+#     même système de fichiers => la finalisation est un renommage instantané (aucune copie) ;
+#   - le port web d'Emby (8096) et le port BitTorrent (6881) sont DISTINCTS ;
+#   - le port BitTorrent est publié directement sur l'IP publique du serveur (TCP + UDP) :
+#     ni le proxy HTTP de Coolify (Traefik/Caddy), ni un tunnel Cloudflare ne le transportent.
+#
+# Avant le premier démarrage :
+#   sudo mkdir -p /srv/emby/config/plugins /srv/torry/incomplete /srv/torry/complete
+#   sudo cp PetitOurs.Torry.dll /srv/emby/config/plugins/
+#   sudo chown -R 1000:1000 /srv/emby/config /srv/torry
+services:
+  emby:
+    image: emby/embyserver:4.10.2.0
+    restart: unless-stopped
+    environment:
+      # Utilisateur sous lequel tourne Emby (et donc Torry) : doit pouvoir écrire dans /downloads.
+      - UID=1000
+      - GID=1000
+      - GIDLIST=1000
+    volumes:
+      - /srv/emby/config:/config            # configuration Emby + plugins/PetitOurs.Torry.dll + data/torry (état des tâches)
+      - /srv/torry:/downloads               # Torry : /downloads/incomplete (en cours) et /downloads/complete (terminés)
+      - /srv/media:/media                   # vos bibliothèques existantes (facultatif)
+    ports:
+      # Interface web d'Emby. Avec un domaine géré par Coolify, vous pouvez supprimer cette ligne :
+      # le proxy de Coolify joint le conteneur sur 8096 en interne.
+      - "8096:8096"
+      # BitTorrent (connexions entrantes des pairs) et DHT. Doit correspondre au « Port d'écoute BitTorrent »
+      # des réglages Torry et être ouvert dans le pare-feu de l'hôte / du fournisseur cloud.
+      - "6881:6881/tcp"
+      - "6881:6881/udp"

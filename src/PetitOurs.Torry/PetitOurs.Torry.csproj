@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Emby Server 4.9.1.80+ tourne sur .NET 8 (vérifié : l'image emby/embyserver 4.10.2.0 embarque Microsoft.NETCore.App 8.0.28). -->
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>PetitOurs.Torry</AssemblyName>
+    <RootNamespace>PetitOurs.Torry</RootNamespace>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- Fusion des dépendances : activée par défaut en Release (voir cible TorryMerge). -->
+    <TorryMerge Condition="'$(TorryMerge)' == '' and '$(Configuration)' == 'Release'">true</TorryMerge>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Références de compilation uniquement : fournies par Emby à l'exécution. -->
+    <PackageReference Include="MediaBrowser.Server.Core" Version="4.9.1.90" ExcludeAssets="runtime" PrivateAssets="all" />
+    <!-- Moteur BitTorrent 100 % managé, licence MIT. Fusionné dans la DLL du plugin. -->
+    <PackageReference Include="MonoTorrent" Version="3.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Web\torry.html" />
+    <EmbeddedResource Include="Web\torry.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PetitOurs.Torry.Tests" />
+  </ItemGroup>
+
+  <!--
+    Emby charge chaque *.dll du dossier plugins avec Assembly.Load(byte[]) et n'installe aucun
+    résolveur de dépendances : des DLL MonoTorrent posées à côté du plugin ne sont PAS trouvées
+    (vérifié dans Emby 4.10.2 : "Could not load file or assembly 'MonoTorrent'").
+    On fusionne donc MonoTorrent, ReusableTasks et Mono.Nat dans PetitOurs.Torry.dll (ILRepack, /internalize).
+  -->
+  <Target Name="TorryMerge" AfterTargets="Build" Condition="'$(TorryMerge)' == 'true'">
+    <ItemGroup>
+      <_TorryMergeInput Include="$(OutDir)MonoTorrent*.dll;$(OutDir)ReusableTasks.dll;$(OutDir)Mono.Nat.dll" />
+      <_TorryLibDir Include="@(ReferencePath->'%(RootDir)%(Directory).')" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_TorryMergedDir>$(OutDir)merged</_TorryMergedDir>
+    </PropertyGroup>
+    <MakeDir Directories="$(_TorryMergedDir)" />
+    <Exec WorkingDirectory="$(MSBuildThisFileDirectory)"
+          Command="dotnet tool run ilrepack -- /internalize /ndebug /out:&quot;$(_TorryMergedDir)/PetitOurs.Torry.dll&quot; @(_TorryLibDir->Distinct()->'/lib:&quot;%(Identity)&quot;', ' ') &quot;$(OutDir)PetitOurs.Torry.dll&quot; @(_TorryMergeInput->'&quot;%(FullPath)&quot;', ' ')" />
+  </Target>
+
+</Project>

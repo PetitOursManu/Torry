@@ -1,0 +1,199 @@
+<div is="emby-scroller" class="view flex flex-direction-column scrollFrameY flex-grow torryPage" data-horizontal="false" data-forcescrollbar="true" data-centerfocus="true" data-bindheader="true" data-controller="__plugin/torryjs" data-title="Torry">
+    <div class="scrollSlider flex-grow flex-direction-column padded-left padded-left-page padded-right padded-top-page padded-bottom-page">
+        <style>
+            .torryPage .torry-wrap { max-width: 64em; }
+            .torryPage .torry-sub { opacity: .7; margin: .2em 0 1.2em; }
+            .torryPage .torry-tabs { display: flex; gap: .5em; margin-bottom: 1.2em; flex-wrap: wrap; }
+            .torryPage .torry-tab { border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; padding: .5em 1.1em; border-radius: 2em; cursor: pointer; font: inherit; }
+            .torryPage .torry-tab[aria-selected="true"] { background: #52b54b; border-color: #52b54b; color: #fff; }
+            .torryPage .torry-panel[hidden] { display: none; }
+            .torryPage .torry-box { border: 1px solid rgba(128,128,128,.3); border-radius: .5em; padding: 1em; margin-bottom: 1em; }
+            .torryPage .torry-row { display: flex; gap: .6em; align-items: center; flex-wrap: wrap; }
+            .torryPage .torry-grow { flex: 1 1 18em; min-width: 0; }
+            .torryPage .torry-input { width: 100%; box-sizing: border-box; padding: .6em .7em; border-radius: .3em; border: 1px solid rgba(128,128,128,.5); background: rgba(128,128,128,.08); color: inherit; font: inherit; }
+            .torryPage .torry-btn { border: 0; border-radius: .3em; padding: .6em 1em; font: inherit; cursor: pointer; background: rgba(128,128,128,.22); color: inherit; }
+            .torryPage .torry-btn:hover { background: rgba(128,128,128,.35); }
+            .torryPage .torry-btn:disabled { opacity: .45; cursor: default; }
+            .torryPage .torry-btn-primary { background: #52b54b; color: #fff; }
+            .torryPage .torry-btn-primary:hover { background: #47a041; }
+            .torryPage .torry-btn-danger { background: #c0392b; color: #fff; }
+            .torryPage .torry-btn-danger:hover { background: #a93226; }
+            .torryPage .torry-btn-small { padding: .35em .75em; font-size: .9em; }
+            .torryPage .torry-status { font-size: .9em; opacity: .85; display: flex; gap: 1.2em; flex-wrap: wrap; }
+            .torryPage .torry-warn { background: rgba(230,160,0,.15); border-left: 4px solid #e6a000; padding: .6em .8em; margin: .6em 0; border-radius: .2em; }
+            .torryPage .torry-error { background: rgba(192,57,43,.15); border-left: 4px solid #c0392b; padding: .6em .8em; margin: .6em 0; border-radius: .2em; }
+            .torryPage .torry-note { font-size: .9em; opacity: .8; margin-top: .4em; }
+            .torryPage .torry-task { border: 1px solid rgba(128,128,128,.3); border-radius: .5em; padding: .9em 1em; margin-bottom: .8em; }
+            .torryPage .torry-task-head { display: flex; justify-content: space-between; gap: 1em; align-items: baseline; flex-wrap: wrap; }
+            .torryPage .torry-task-name { font-weight: 600; word-break: break-word; }
+            .torryPage .torry-badge { font-size: .8em; padding: .15em .6em; border-radius: 1em; background: rgba(128,128,128,.25); white-space: nowrap; }
+            .torryPage .torry-badge-ok { background: rgba(82,181,75,.25); }
+            .torryPage .torry-badge-err { background: rgba(192,57,43,.3); }
+            .torryPage .torry-bar { height: .5em; background: rgba(128,128,128,.25); border-radius: .25em; overflow: hidden; margin: .6em 0 .4em; }
+            .torryPage .torry-bar > div { height: 100%; background: #52b54b; width: 0; transition: width .4s; }
+            .torryPage .torry-meta { font-size: .88em; opacity: .85; display: flex; gap: 1em; flex-wrap: wrap; }
+            .torryPage .torry-actions { margin-top: .6em; display: flex; gap: .4em; flex-wrap: wrap; }
+            .torryPage .torry-empty { opacity: .7; padding: 1.5em 0; text-align: center; }
+            .torryPage .torry-form h3 { margin: 1.4em 0 .6em; font-size: 1.05em; }
+            .torryPage .torry-field { margin-bottom: .9em; }
+            .torryPage .torry-field label { display: block; margin-bottom: .3em; }
+            .torryPage .torry-field .torry-help { font-size: .85em; opacity: .7; margin-top: .25em; }
+            .torryPage .torry-check { display: flex; gap: .5em; align-items: center; margin-bottom: .8em; }
+            .torryPage .torry-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14em, 1fr)); gap: 0 1em; }
+            .torryPage .torry-modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 1em; }
+            .torryPage .torry-modal[hidden] { display: none; }
+            .torryPage .torry-dialog { background: #202020; color: #eee; border-radius: .6em; padding: 1.2em; width: 100%; max-width: 46em; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+            .torryPage .torry-dialog h2 { margin: 0 0 .6em; font-size: 1.2em; word-break: break-word; }
+            .torryPage .torry-files { overflow: auto; flex: 1 1 auto; border: 1px solid rgba(128,128,128,.3); border-radius: .3em; margin: .6em 0; }
+            .torryPage .torry-file { display: flex; gap: .6em; align-items: center; padding: .45em .6em; border-bottom: 1px solid rgba(128,128,128,.15); }
+            .torryPage .torry-file:last-child { border-bottom: 0; }
+            .torryPage .torry-file-path { flex: 1; word-break: break-all; font-size: .92em; }
+            .torryPage .torry-file-size { opacity: .75; white-space: nowrap; font-size: .9em; }
+            .torryPage .torry-dialog-foot { display: flex; justify-content: space-between; gap: .6em; align-items: center; flex-wrap: wrap; margin-top: .4em; }
+            .torryPage .torry-legal { font-size: .8em; opacity: .55; margin-top: 2em; }
+        </style>
+
+        <div class="torry-wrap">
+            <h1 style="margin-bottom:0;">Torry</h1>
+            <div class="torry-sub">Téléchargements BitTorrent sur le serveur Emby</div>
+
+            <div class="torry-tabs" role="tablist">
+                <button type="button" class="torry-tab" role="tab" data-tab="downloads" aria-selected="true">Téléchargements</button>
+                <button type="button" class="torry-tab" role="tab" data-tab="settings" aria-selected="false">Réglages</button>
+            </div>
+
+            <!-- Onglet téléchargements -->
+            <section class="torry-panel" data-panel="downloads">
+                <div class="torry-box">
+                    <form class="torry-add-form" autocomplete="off">
+                        <label for="torryMagnet" style="display:block;margin-bottom:.4em;">Ajouter un lien magnet</label>
+                        <div class="torry-row">
+                            <div class="torry-grow">
+                                <input id="torryMagnet" class="torry-input torry-magnet" type="text" placeholder="magnet:?xt=urn:btih:…" spellcheck="false" />
+                            </div>
+                            <button type="submit" class="torry-btn torry-btn-primary">Ajouter</button>
+                            <span style="opacity:.6;">ou</span>
+                            <button type="button" class="torry-btn torry-btn-import">Importer un fichier .torrent</button>
+                            <input type="file" class="torry-file-input" accept=".torrent,application/x-bittorrent" hidden />
+                        </div>
+                    </form>
+                </div>
+
+                <div class="torry-engine"></div>
+                <div class="torry-tasks"></div>
+            </section>
+
+            <!-- Onglet réglages -->
+            <section class="torry-panel" data-panel="settings" hidden>
+                <form class="torry-form torry-settings-form" autocomplete="off">
+                    <h3>Dossiers</h3>
+                    <div class="torry-field">
+                        <label for="torryIncomplete">Téléchargements en cours</label>
+                        <input id="torryIncomplete" class="torry-input" name="IncompleteDirectory" type="text" required />
+                        <div class="torry-help">Chemin vu par le conteneur Emby. Ne doit pas être dans une bibliothèque.</div>
+                    </div>
+                    <div class="torry-field">
+                        <label for="torryCompleted">Téléchargements terminés</label>
+                        <input id="torryCompleted" class="torry-input" name="CompletedDirectory" type="text" required />
+                        <div class="torry-help">Ajoutez ce dossier (ou un parent) à une bibliothèque Emby. Idéalement sur le même volume que le dossier « en cours » : le déplacement final est alors instantané.</div>
+                    </div>
+
+                    <h3>Réseau</h3>
+                    <div class="torry-grid">
+                        <div class="torry-field">
+                            <label for="torryPort">Port d'écoute BitTorrent (TCP + UDP)</label>
+                            <input id="torryPort" class="torry-input" name="ListenPort" type="number" min="1024" max="65535" required />
+                            <div class="torry-help">Distinct du port web d'Emby (8096). À publier dans Docker et à ouvrir sur le pare-feu.</div>
+                        </div>
+                        <div class="torry-field">
+                            <label for="torryConnections">Connexions maximales</label>
+                            <input id="torryConnections" class="torry-input" name="MaxConnections" type="number" min="10" max="1000" required />
+                        </div>
+                    </div>
+                    <label class="torry-check"><input type="checkbox" name="EnableDht" /> Activer le DHT (recommandé pour les liens magnet publics)</label>
+                    <label class="torry-check"><input type="checkbox" name="EnablePortForwarding" /> Redirection de port automatique UPnP / NAT-PMP (inutile en réseau Docker « bridge »)</label>
+
+                    <h3>Limites</h3>
+                    <div class="torry-grid">
+                        <div class="torry-field">
+                            <label for="torryDown">Débit descendant max (Kio/s, 0 = illimité)</label>
+                            <input id="torryDown" class="torry-input" name="MaxDownloadRateKiB" type="number" min="0" required />
+                        </div>
+                        <div class="torry-field">
+                            <label for="torryUp">Débit montant max (Kio/s, 0 = illimité)</label>
+                            <input id="torryUp" class="torry-input" name="MaxUploadRateKiB" type="number" min="0" required />
+                        </div>
+                        <div class="torry-field">
+                            <label for="torryActive">Téléchargements simultanés</label>
+                            <input id="torryActive" class="torry-input" name="MaxActiveDownloads" type="number" min="1" max="20" required />
+                        </div>
+                    </div>
+
+                    <h3>Partage après téléchargement</h3>
+                    <label class="torry-check"><input type="checkbox" name="SeedAfterDownload" /> Continuer à partager une fois le téléchargement terminé</label>
+                    <div class="torry-grid">
+                        <div class="torry-field">
+                            <label for="torryRatio">Arrêter au ratio (0 = sans limite)</label>
+                            <input id="torryRatio" class="torry-input" name="SeedRatioLimit" type="number" min="0" max="100" step="0.1" required />
+                        </div>
+                        <div class="torry-field">
+                            <label for="torrySeedTime">Arrêter après (minutes, 0 = sans limite)</label>
+                            <input id="torrySeedTime" class="torry-input" name="SeedTimeLimitMinutes" type="number" min="0" required />
+                        </div>
+                    </div>
+                    <div class="torry-help" style="font-size:.85em;opacity:.7;margin-bottom:1em;">Le partage s'arrête dès que l'une des limites est atteinte. Si les deux valent 0, il continue jusqu'à arrêt manuel.</div>
+
+                    <h3>Bibliothèque et automatismes</h3>
+                    <label class="torry-check"><input type="checkbox" name="RefreshLibraryOnComplete" /> Demander l'actualisation de la bibliothèque quand des fichiers sont disponibles</label>
+                    <label class="torry-check"><input type="checkbox" name="AutoStartAfterMetadata" /> Démarrer automatiquement avec tous les fichiers (sans écran de sélection)</label>
+
+                    <div class="torry-settings-message"></div>
+                    <button type="submit" class="torry-btn torry-btn-primary" style="margin-top:1em;">Enregistrer</button>
+                </form>
+            </section>
+
+            <div class="torry-legal">Torry for Emby est une extension communautaire indépendante, sans affiliation officielle avec Emby. Vous êtes responsable des contenus que vous téléchargez et partagez.</div>
+        </div>
+
+        <!-- Fenêtre : sélection des fichiers -->
+        <div class="torry-modal torry-files-modal" hidden>
+            <div class="torry-dialog" role="dialog" aria-modal="true" aria-labelledby="torryFilesTitle">
+                <h2 id="torryFilesTitle" class="torry-files-title">Choisir les fichiers</h2>
+                <div class="torry-row">
+                    <button type="button" class="torry-btn torry-btn-small torry-sel-all">Tout cocher</button>
+                    <button type="button" class="torry-btn torry-btn-small torry-sel-none">Tout décocher</button>
+                    <button type="button" class="torry-btn torry-btn-small torry-sel-video">Vidéos uniquement</button>
+                </div>
+                <div class="torry-files"></div>
+                <div class="torry-dialog-foot">
+                    <div class="torry-files-summary"></div>
+                    <div class="torry-row">
+                        <button type="button" class="torry-btn torry-files-close">Plus tard</button>
+                        <button type="button" class="torry-btn torry-btn-primary torry-files-start">Démarrer le téléchargement</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fenêtre : suppression -->
+        <div class="torry-modal torry-delete-modal" hidden>
+            <div class="torry-dialog" role="dialog" aria-modal="true" aria-labelledby="torryDeleteTitle" style="max-width:34em;">
+                <h2 id="torryDeleteTitle">Supprimer la tâche</h2>
+                <div class="torry-delete-name" style="margin-bottom:.8em;word-break:break-word;"></div>
+                <div style="margin-bottom:.8em;">Par défaut, les fichiers téléchargés sont <strong>conservés</strong> sur le serveur.</div>
+                <label class="torry-check"><input type="checkbox" class="torry-delete-files" /> Supprimer aussi les fichiers téléchargés</label>
+                <div class="torry-delete-confirm-zone" hidden>
+                    <div class="torry-error">Action irréversible : les fichiers de cette tâche seront effacés du disque, y compris s'ils sont déjà dans la bibliothèque.</div>
+                    <label for="torryDeleteConfirm">Pour confirmer, saisissez <strong>SUPPRIMER</strong></label>
+                    <input id="torryDeleteConfirm" class="torry-input torry-delete-confirm" type="text" autocomplete="off" spellcheck="false" />
+                </div>
+                <div class="torry-dialog-foot" style="justify-content:flex-end;margin-top:1em;">
+                    <div class="torry-row">
+                        <button type="button" class="torry-btn torry-delete-cancel">Annuler</button>
+                        <button type="button" class="torry-btn torry-btn-danger torry-delete-ok">Supprimer la tâche</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

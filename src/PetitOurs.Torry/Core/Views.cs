@@ -90,6 +90,12 @@ namespace PetitOurs.Torry.Core
 
         public int ListenPort { get; set; }
 
+        /// <summary>
+        /// Vrai si le moteur écoute sur le port BitTorrent. MonoTorrent n'ouvre ses ports qu'au démarrage du premier
+        /// torrent actif et les referme quand plus aucun ne l'est : un test de port échoue donc si la liste est vide.
+        /// </summary>
+        public bool Listening { get; set; }
+
         public bool DhtEnabled { get; set; }
 
         public int DhtNodes { get; set; }

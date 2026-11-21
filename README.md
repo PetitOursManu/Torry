@@ -156,9 +156,12 @@ Info Torry: Torry démarré : 0 tâche(s), port BitTorrent 6881.
 ### 5. Ouvrir le port BitTorrent
 
 Ouvrez **6881 en TCP et en UDP** dans le pare-feu du fournisseur (Hetzner, OVH, Scaleway…). Avec UFW :
-`sudo ufw allow 6881/tcp && sudo ufw allow 6881/udp`. Docker contourne souvent UFW : testez depuis une
-autre machine avec `nc -vz <ip-du-serveur> 6881`. Sans port entrant, Torry fonctionne quand même, mais plus
-lentement (voir [DOCKER-COOLIFY.md](docs/DOCKER-COOLIFY.md#sans-port-entrant-accessible)).
+`sudo ufw allow 6881/tcp && sudo ufw allow 6881/udp`. Coolify n'a pas de pare-feu à configurer : les
+`ports` du compose sont publiés directement par Docker. Sans port entrant, Torry fonctionne quand même, mais
+plus lentement (voir [DOCKER-COOLIFY.md](docs/DOCKER-COOLIFY.md#sans-port-entrant-accessible)).
+
+Le test du port se fait **à l'étape 6, une fois un torrent actif** (voir [Tester le port](#tester-le-port-bittorrent)) :
+Torry n'écoute sur 6881 que pendant qu'un torrent est en téléchargement ou en partage.
 
 ### 6. Configurer Emby et Torry
 
@@ -170,6 +173,29 @@ lentement (voir [DOCKER-COOLIFY.md](docs/DOCKER-COOLIFY.md#sans-port-entrant-acc
    `/downloads/complete`, port 6881. Cliquez sur **Enregistrer** : Torry revérifie les dossiers, et les
    avertissements disparaissent si tout est correct.
 4. Collez un lien magnet ou importez un `.torrent`, choisissez les fichiers, puis lancez le téléchargement.
+5. Pendant que ce torrent est actif, [testez le port](#tester-le-port-bittorrent).
+
+### Tester le port BitTorrent
+
+Le moteur BitTorrent (MonoTorrent) n'ouvre le port qu'au démarrage du premier torrent actif, et le referme
+quand plus aucun ne l'est. **Avec une liste vide, le test échoue forcément**, même si tout est bien configuré.
+La page Torry indique l'état en direct : « Port BitTorrent 6881 : en écoute » ou « fermé tant qu'aucun
+torrent n'est actif ».
+
+1. Ajoutez un torrent et démarrez-le. Attendez que Torry affiche « en écoute ».
+2. Testez depuis **une autre machine** que le serveur :
+   - Windows (PowerShell) : `Test-NetConnection <ip-du-serveur> -Port 6881`, qui doit afficher
+     `TcpTestSucceeded : True`. Par défaut, `nc` n'existe pas sous Windows.
+   - Linux / macOS : `nc -vz <ip-du-serveur> 6881`.
+
+   Ces tests ne vérifient que le TCP : l'UDP, utilisé par le DHT, ne se teste pas aussi simplement.
+3. En cas d'échec, l'erreur indique la piste :
+   - **refus immédiat** (« connection refused ») : le port atteint bien le serveur, mais rien n'écoute.
+     Vérifiez que Torry affiche « en écoute » et que le port est publié :
+     `docker ps --format '{{.Names}}  {{.Ports}}' | grep -i emby` doit montrer `0.0.0.0:6881->6881/tcp`
+     et `0.0.0.0:6881->6881/udp`. Sinon, cliquez sur **Redeploy** dans Coolify.
+   - **délai dépassé** (« timed out ») : un pare-feu bloque encore, chez l'hébergeur (`ufw status`,
+     `iptables -L -n`) ou avec une règle qui ne s'applique pas à ce serveur.
 
 ### Mise à jour et désinstallation (Coolify)
 

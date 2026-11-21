@@ -135,6 +135,7 @@ namespace PetitOurs.Torry.Tests
             var options = Options(seed: true);
             var manager = NewManager(options);
             await manager.StartAsync();
+            Assert.False(manager.GetStatus().Engine.Listening, "aucun torrent actif : MonoTorrent n'écoute pas encore");
 
             var task = await manager.AddTorrentFileAsync(_torrentBytes);
             Assert.True(task.NeedsSelection);
@@ -150,6 +151,13 @@ namespace PetitOurs.Torry.Tests
             await ConnectToSeederAsync(manager, task.Id);
 
             await TestSupport.WaitUntilAsync(() => View(manager, task.Id).State == "Seeding", Timeout, "téléchargement + finalisation");
+            await manager.TickForTestsAsync();
+            Assert.True(manager.GetStatus().Engine.Listening, "torrent actif : le port doit être en écoute");
+            using (var client = new System.Net.Sockets.TcpClient())
+            {
+                await client.ConnectAsync(IPAddress.Loopback, options.ListenPort);
+                Assert.True(client.Connected);
+            }
 
             var finalDir = Path.Combine(_completed, "Mon Film (2024) (2)");
             var movie = Path.Combine(finalDir, "Mon Film (2024).mkv");

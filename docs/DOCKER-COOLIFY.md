@@ -95,7 +95,16 @@ Ouvrez le port BitTorrent en **TCP et UDP** à tous les niveaux :
   La redirection automatique UPnP / NAT-PMP de Torry ne fonctionne pas en réseau Docker « bridge »
   (le conteneur ne voit pas le routeur). Elle est désactivée par défaut.
 
-Test depuis une autre machine : `nc -vz <ip-publique> 6881` doit réussir pendant qu'Emby tourne.
+Test depuis une autre machine, **avec au moins un torrent actif** : MonoTorrent n'ouvre le port qu'au
+démarrage du premier torrent et le referme quand plus aucun ne l'est. La page Torry indique « en écoute »
+ou « fermé ».
+
+- Linux / macOS : `nc -vz <ip-publique> 6881`
+- Windows : `Test-NetConnection <ip-publique> -Port 6881` (`TcpTestSucceeded : True`)
+
+Un refus immédiat signifie que rien n'écoute : liste vide, ou port non publié par Docker. Un délai dépassé
+signifie qu'un pare-feu bloque. Le détail est dans le
+[README](../README.md#tester-le-port-bittorrent).
 
 N'exposez pas le port 6881 pour autre chose : seul le moteur BitTorrent y écoute. Aucune commande Torry
 n'est accessible sur ce port. L'interface et l'API restent derrière l'authentification Emby, sur le port web.

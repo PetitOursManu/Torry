@@ -1358,6 +1358,7 @@ namespace PetitOurs.Torry.Engine
             status.Engine.Running = _started && _startupError == null;
             status.Engine.StartupError = _startupError;
             status.Engine.ListenPort = _options.ListenPort;
+            status.Engine.Listening = _engine?.Engine?.IsRunning == true;
             status.Engine.DhtEnabled = _options.EnableDht;
             status.Engine.IncompleteDirectory = _options.IncompleteDirectory;
             status.Engine.CompletedDirectory = _options.CompletedDirectory;

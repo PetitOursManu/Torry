@@ -186,7 +186,9 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             html += '<div class="torry-warn">' + escapeHtml(w) + '</div>';
         });
         var parts = [];
-        parts.push('Port BitTorrent ' + engine.ListenPort);
+        parts.push('Port BitTorrent ' + engine.ListenPort + (engine.Listening
+            ? ' : en écoute'
+            : ' : fermé tant qu\'aucun torrent n\'est actif'));
         parts.push(engine.DhtEnabled ? ('DHT : ' + engine.DhtNodes + ' nœud(s)') : 'DHT désactivé');
         parts.push('↓ ' + formatRate(engine.DownloadRate));
         parts.push('↑ ' + formatRate(engine.UploadRate));

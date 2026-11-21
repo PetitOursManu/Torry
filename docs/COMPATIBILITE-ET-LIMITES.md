@@ -67,6 +67,9 @@ serveur Emby, pas l'application.
   uniquement dans `incomplete/`, jamais dans une bibliothèque.
 - **Changement de dossiers** : refusé tant que des tâches sont actives (téléchargement, partage, file
   d'attente). Mettez-les d'abord en pause.
+- **Port d'écoute ouvert à la demande** : MonoTorrent n'ouvre le port BitTorrent (TCP et UDP) qu'au
+  démarrage du premier torrent actif, et le referme quand plus aucun ne l'est. Un test de port avec une
+  liste vide échoue donc toujours. La page Torry affiche l'état (« en écoute » ou « fermé »).
 - **Changement de port** : appliqué à chaud via MonoTorrent (non testé). N'oubliez pas de modifier aussi la
   publication Docker et le pare-feu. En cas de doute, redémarrez Emby.
 - **Métadonnées d'un magnet** : Torry ajoute le lien au moteur pour accepter aussi les pairs entrants, puis

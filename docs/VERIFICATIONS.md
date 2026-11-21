@@ -105,8 +105,23 @@ Deux premières exécutions ont échoué sur la partie magnet. Elles ont révél
 | Dépendances natives | Analyse des assemblies fusionnées + exécution dans l'image Emby | Aucune : MonoTorrent est entièrement managé |
 | Build reproductible | Deux builds successifs | SHA-256 identique : `d32e8b693ef5760de41b7a6932a0af6c7f40afec4da2522cbd9bb4ab33629a28` |
 
-Note : la DLL publiée a ensuite été recompilée après l'ajout de la licence MIT. Seules ses métadonnées
-de copyright ont changé, d'où l'empreinte `ef19ed1f3c7d41ed9832b65f6ed8d53277976cefccdba80aff08f56482197b58`.
+Note : cette empreinte est celle de la version vérifiée ce jour-là. La DLL publiée a ensuite été recompilée
+(licence MIT, indicateur d'écoute du port), son empreinte a donc changé. `./build.sh` affiche celle de la
+version courante.
+
+## 5 bis. Indicateur d'écoute du port (ajouté ensuite)
+
+Ajout effectué après qu'un test de port depuis une machine externe a échoué. MonoTorrent n'ouvre le port
+qu'au démarrage du premier torrent actif. Vérifié dans `lscr.io/linuxserver/emby:4.10.2` (image du modèle
+Coolify), en comparant `Engine.Listening` de l'API à `/proc/net/tcp` du conteneur :
+
+| Situation | API `Listening` | Noyau (port 6881) | Interface |
+|---|---|---|---|
+| Aucune tâche | `false` | fermé | « fermé tant qu'aucun torrent n'est actif » |
+| Magnet en recherche de métadonnées | `true` | en écoute | « en écoute » (après « Reprendre ») |
+| Tâche en pause | `false` | fermé | « fermé tant qu'aucun torrent n'est actif » |
+
+Le test d'intégration vérifie aussi qu'une connexion TCP au port aboutit pendant le partage.
 
 ## 6. Ce qui n'a PAS été vérifié
 

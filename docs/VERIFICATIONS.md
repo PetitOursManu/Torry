@@ -105,6 +105,9 @@ Deux premières exécutions ont échoué sur la partie magnet. Elles ont révél
 | Dépendances natives | Analyse des assemblies fusionnées + exécution dans l'image Emby | Aucune : MonoTorrent est entièrement managé |
 | Build reproductible | Deux builds successifs | SHA-256 identique : `d32e8b693ef5760de41b7a6932a0af6c7f40afec4da2522cbd9bb4ab33629a28` |
 
+Note : la DLL publiée a ensuite été recompilée après l'ajout de la licence MIT. Seules ses métadonnées
+de copyright ont changé, d'où l'empreinte `ef19ed1f3c7d41ed9832b65f6ed8d53277976cefccdba80aff08f56482197b58`.
+
 ## 6. Ce qui n'a PAS été vérifié
 
 - **Applications natives Emby** (Android TV, Apple TV, Roku, téléviseurs, iOS, Android) : aucune n'a été

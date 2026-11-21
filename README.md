@@ -214,3 +214,11 @@ eng/verify-emby.sh  # vérification de bout en bout dans un vrai Emby 4.10.2 (Do
 | `src/PetitOurs.Torry/Web` | Page HTML et contrôleur JS (navigateur) | — |
 | `tests/` | Tests xUnit, dont un essaim BitTorrent local réel | — |
 | `eng/` | Build, vérification Emby de bout en bout, seeder de test | — |
+
+## Licence
+
+Torry for Emby est distribué sous licence [MIT](LICENSE). Copyright (c) 2026 PetitOurs.
+
+La DLL publiée contient aussi MonoTorrent, ReusableTasks et Mono.Nat, tous sous licence MIT. Leurs mentions
+de copyright figurent dans [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) et doivent accompagner toute
+redistribution de la DLL.

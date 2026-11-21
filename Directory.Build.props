@@ -5,7 +5,8 @@
     <FileVersion>0.1.0.0</FileVersion>
     <Authors>PetitOurs</Authors>
     <Product>Torry for Emby</Product>
-    <Copyright>PetitOurs</Copyright>
+    <Copyright>Copyright (c) 2026 PetitOurs</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
     <Deterministic>true</Deterministic>

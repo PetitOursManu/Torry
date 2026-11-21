@@ -128,6 +128,20 @@ namespace PetitOurs.Torry.Tests
 
             return "Actualisation demandée : Films.";
         }
+
+        public List<string> RefreshedNow { get; } = new List<string>();
+
+        public LibraryRefreshResult RefreshNow(string directory)
+        {
+            lock (RefreshedNow)
+            {
+                RefreshedNow.Add(directory);
+            }
+
+            return InLibrary
+                ? new LibraryRefreshResult { Refreshed = true, Message = "Actualisation lancée : Films." }
+                : new LibraryRefreshResult { Refreshed = false, Message = "Aucune bibliothèque." };
+        }
     }
 
     internal sealed class ListLog : ITorryLog

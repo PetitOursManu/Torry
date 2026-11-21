@@ -31,6 +31,8 @@ qBittorrent, ni Radarr ou Sonarr, ni service de débridage).
 - Persistance : les tâches, leur état, les compteurs et le cache de reprise MonoTorrent survivent au
   redémarrage d'Emby.
 - Actualisation de la bibliothèque Emby qui contient le dossier, dès que les fichiers sont disponibles.
+  Le bouton **« Actualiser la bibliothèque »** de l'onglet Téléchargements force une analyse immédiate du
+  dossier des téléchargements terminés. Sans lui, Emby attend environ 90 s (délai de surveillance par défaut).
 
 ## Comment les fichiers sont gérés
 
@@ -149,7 +151,7 @@ docker exec "$CONTAINER" grep -i "torry" /config/logs/embyserver.txt | tail -3
 Vous devez voir :
 
 ```
-Info App: Loading PetitOurs.Torry, Version=0.1.0.0 ... from /config/plugins/PetitOurs.Torry.dll
+Info App: Loading PetitOurs.Torry, Version=0.2.0.0 ... from /config/plugins/PetitOurs.Torry.dll
 Info Torry: Torry démarré : 0 tâche(s), port BitTorrent 6881.
 ```
 
@@ -217,6 +219,11 @@ torrent n'est actif ».
 - Exemple : [`deploy/docker-compose.yml`](deploy/docker-compose.yml)
 
 ## Compiler
+
+> **À chaque nouvelle version publiée, augmentez `Version`, `AssemblyVersion` et `FileVersion` dans
+> `Directory.Build.props`.** Emby calcule l'ETag des pages de plugin à partir de la seule version du plugin
+> (`MD5(plugin.Version)`, vérifié dans Emby 4.10.2) : si la version ne change pas, les navigateurs gardent
+> l'ancienne page en cache, même après le remplacement de la DLL.
 
 Docker suffit. Le build utilise l'image SDK .NET 8.0.428, épinglée par empreinte, si aucun SDK local n'est
 présent :

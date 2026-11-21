@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Plugins;
+using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Logging;
 using PetitOurs.Torry.Engine;
 using PetitOurs.Torry.Persistence;
@@ -20,14 +22,18 @@ namespace PetitOurs.Torry.Emby
         private readonly IApplicationPaths _paths;
         private readonly ILibraryManager _libraryManager;
         private readonly ILibraryMonitor _libraryMonitor;
+        private readonly IProviderManager _providerManager;
+        private readonly IFileSystem _fileSystem;
         private TorrentTaskManager _manager;
 
-        public TorryEntryPoint(ILogManager logManager, IApplicationPaths paths, ILibraryManager libraryManager, ILibraryMonitor libraryMonitor)
+        public TorryEntryPoint(ILogManager logManager, IApplicationPaths paths, ILibraryManager libraryManager, ILibraryMonitor libraryMonitor, IProviderManager providerManager, IFileSystem fileSystem)
         {
             _logger = logManager.GetLogger("Torry");
             _paths = paths;
             _libraryManager = libraryManager;
             _libraryMonitor = libraryMonitor;
+            _providerManager = providerManager;
+            _fileSystem = fileSystem;
         }
 
         /// <summary>Instance unique utilisée par l'API.</summary>
@@ -37,7 +43,7 @@ namespace PetitOurs.Torry.Emby
         {
             var options = (Plugin.Instance?.Configuration ?? new PluginConfiguration()).ToOptions();
             var store = new TaskStore(Path.Combine(_paths.DataPath, "torry"));
-            _manager = new TorrentTaskManager(store, options, new EmbyLog(_logger), new EmbyLibraryNotifier(_libraryManager, _libraryMonitor));
+            _manager = new TorrentTaskManager(store, options, new EmbyLog(_logger), new EmbyLibraryNotifier(_libraryManager, _libraryMonitor, _providerManager, _fileSystem));
             Manager = _manager;
 
             // Démarrage asynchrone : la restauration des tâches et le moteur ne retardent pas Emby.

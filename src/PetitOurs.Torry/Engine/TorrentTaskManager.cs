@@ -507,6 +507,21 @@ namespace PetitOurs.Torry.Engine
             }
         }
 
+        /// <summary>Actualise immédiatement la ou les bibliothèques Emby qui contiennent le dossier des téléchargements terminés.</summary>
+        public LibraryRefreshResult RefreshLibraryNow()
+        {
+            var files = _files;
+            if (!_started || files == null)
+            {
+                throw new TorryUserException("Le moteur Torry n'est pas démarré.");
+            }
+
+            var result = _library.RefreshNow(files.CompletedRoot) ?? new LibraryRefreshResult { Message = "Actualisation impossible." };
+            _libraryCheckUtc = DateTime.MinValue;
+            _log.Info("Torry: actualisation manuelle de la bibliothèque : " + result.Message);
+            return result;
+        }
+
         /// <summary>Applique de nouveaux réglages (débits, port, partage, file d'attente, dossiers).</summary>
         public async Task UpdateOptionsAsync(TorryOptions options)
         {

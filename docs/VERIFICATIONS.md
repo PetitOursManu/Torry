@@ -109,6 +109,18 @@ Note : cette empreinte est celle de la version vérifiée ce jour-là. La DLL pu
 (licence MIT, indicateur d'écoute du port), son empreinte a donc changé. `./build.sh` affiche celle de la
 version courante.
 
+## 5 ter. Bouton « Actualiser la bibliothèque » (version 0.2.0)
+
+Vérifié dans `lscr.io/linuxserver/emby:4.10.2` (image du modèle Coolify), avec une bibliothèque Films sur
+`/downloads/complete` :
+
+| Vérification | Résultat |
+|---|---|
+| Sans bibliothèque couvrant le dossier | `Refreshed: false`, « Aucune bibliothèque Emby ne contient le dossier… » |
+| Vidéo déposée à la main, puis appel de l'API | Film visible dans Emby **5 s** après l'appel (contre environ 90 s via la surveillance d'Emby) |
+| Vidéo déposée, puis clic sur le bouton dans l'interface | Message « Actualisation lancée : Films… » ; film visible **17 s** après le dépôt, temps du clic compris |
+| Cache du navigateur | Avec une version inchangée (0.1.0.0), l'ancienne page restait affichée : ETag Emby = `MD5(version du plugin)`, réponse 304. Après passage en 0.2.0.0, la nouvelle page est servie sans vider le cache |
+
 ## 5 bis. Indicateur d'écoute du port (ajouté ensuite)
 
 Ajout effectué après qu'un test de port depuis une machine externe a échoué. MonoTorrent n'ouvre le port

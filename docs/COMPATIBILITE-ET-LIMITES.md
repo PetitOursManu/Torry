@@ -88,6 +88,9 @@ serveur Emby, pas l'application.
 - **Liens symboliques** : Torry ne suit jamais un lien symbolique lors d'une suppression. Un lien placé à la
   main dans les dossiers de téléchargement n'est pas résolu lors des écritures du moteur. Ne créez pas de
   liens symboliques dans `incomplete/`.
+- **Cache de la page après une mise à jour** : Emby identifie la page par la version du plugin. Chaque
+  version publiée de Torry change donc de numéro, et le navigateur recharge la page tout seul. Si une page
+  semble ancienne après une mise à jour, rechargez complètement l'onglet (Ctrl+F5).
 - **Mises à jour en direct** : l'interface interroge le serveur toutes les 2 secondes tant que la page est
   ouverte. Il n'y a pas de notifications.
 - **Langue** : l'interface est en français uniquement.

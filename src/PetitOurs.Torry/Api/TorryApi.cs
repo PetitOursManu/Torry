@@ -86,6 +86,12 @@ namespace PetitOurs.Torry.Api
         public string Confirmation { get; set; }
     }
 
+    [Route("/Torry/Library/Refresh", "POST", Summary = "Actualise maintenant la bibliothèque contenant le dossier des téléchargements terminés")]
+    [Authenticated(Roles = "admin")]
+    public class RefreshTorryLibrary : IReturn<LibraryRefreshResult>
+    {
+    }
+
     [Route("/Torry/Settings", "GET")]
     [Authenticated(Roles = "admin")]
     public class GetTorrySettings : IReturn<TorryOptions>
@@ -202,6 +208,8 @@ namespace PetitOurs.Torry.Api
         public Task<object> Post(CancelTorryTask request) => Run(m => m.CancelAsync(request.Id));
 
         public Task<object> Post(DeleteTorryTask request) => Run(m => m.RemoveAsync(request.Id, request.DeleteFiles, request.Confirmation));
+
+        public Task<object> Post(RefreshTorryLibrary request) => Run(m => Task.FromResult(m.RefreshLibraryNow()));
 
         public object Get(GetTorrySettings request)
         {

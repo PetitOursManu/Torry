@@ -20,6 +20,18 @@ namespace PetitOurs.Torry.Core
 
         /// <summary>Demande l'actualisation de la bibliothèque contenant ce dossier. Renvoie une note lisible.</summary>
         string NotifyNewContent(string directory);
+
+        /// <summary>
+        /// Actualisation immédiate (sans le délai de surveillance d'Emby) de la ou des bibliothèques contenant ce dossier.
+        /// </summary>
+        LibraryRefreshResult RefreshNow(string directory);
+    }
+
+    public sealed class LibraryRefreshResult
+    {
+        public bool Refreshed { get; set; }
+
+        public string Message { get; set; }
     }
 
     public sealed class NullLibraryNotifier : ILibraryNotifier
@@ -27,6 +39,9 @@ namespace PetitOurs.Torry.Core
         public bool IsInLibrary(string path) => false;
 
         public string NotifyNewContent(string directory) => null;
+
+        public LibraryRefreshResult RefreshNow(string directory) =>
+            new LibraryRefreshResult { Refreshed = false, Message = "Bibliothèque Emby indisponible." };
     }
 
     public sealed class NullLog : ITorryLog

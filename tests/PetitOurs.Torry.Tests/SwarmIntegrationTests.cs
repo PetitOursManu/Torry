@@ -285,6 +285,23 @@ namespace PetitOurs.Torry.Tests
         }
 
         [Fact]
+        public async Task Manual_library_refresh_targets_the_completed_folder()
+        {
+            var options = Options(seed: false);
+            var manager = NewManager(options);
+            Assert.Throws<TorryUserException>(() => manager.RefreshLibraryNow());
+
+            await manager.StartAsync();
+            var result = manager.RefreshLibraryNow();
+            Assert.True(result.Refreshed);
+            Assert.Equal(PetitOurs.Torry.Files.PathGuard.NormalizeDirectory(_completed), Assert.Single(_notifier.RefreshedNow));
+
+            _notifier.InLibrary = false;
+            Assert.False(manager.RefreshLibraryNow().Refreshed);
+            await manager.StopAsync();
+        }
+
+        [Fact]
         public async Task Duplicate_and_invalid_inputs_are_rejected()
         {
             var manager = NewManager(Options(seed: false));

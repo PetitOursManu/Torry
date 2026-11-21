@@ -233,6 +233,10 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             }
         });
 
+        view.querySelector('.torry-btn-refresh-library').addEventListener('click', function () {
+            instance.refreshLibrary();
+        });
+
         view.querySelector('.torry-tasks').addEventListener('click', function (e) {
             var button = e.target.closest('button[data-action]');
             if (!button) {
@@ -386,6 +390,22 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             instance.notify('Lecture du fichier impossible.', true);
         };
         reader.readAsDataURL(file);
+    };
+
+    View.prototype.refreshLibrary = function () {
+        var instance = this;
+        var button = this.view.querySelector('.torry-btn-refresh-library');
+        button.disabled = true;
+        loading.show();
+        api('POST', 'Torry/Library/Refresh', {}).then(function (result) {
+            instance.notify((result && result.Message) || 'Actualisation demandée.', !(result && result.Refreshed));
+        }, function (err) {
+            return readError(err).then(function (m) { instance.notify(m, true); });
+        }).then(function () {
+            loading.hide();
+            // Évite les demandes en rafale : le bouton est réactivé après quelques secondes.
+            setTimeout(function () { button.disabled = false; }, 5000);
+        });
     };
 
     View.prototype.onTaskAction = function (action, id) {

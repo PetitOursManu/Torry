@@ -63,14 +63,25 @@ services:
 
 ## Coolify
 
+**Emby déjà installé via le service « Emby » de Coolify** (image `lscr.io/linuxserver/emby`) : suivez le
+guide pas à pas du [README](../README.md#installation-sur-un-emby-déployé-avec-coolify).
+
+**Nouvelle installation avec l'image officielle** (`emby/embyserver`), à la place du modèle Coolify :
+
 1. Créez une ressource **Docker Compose** (« Empty Compose ») et collez le contenu de `deploy/docker-compose.yml`.
 2. Domaine : associez votre domaine au service `emby`, **port 8096**. Vous pouvez alors supprimer la ligne
    `"8096:8096"` : le proxy de Coolify joint le conteneur en interne.
-3. Gardez les lignes `6881:6881/tcp` et `6881:6881/udp`. Coolify les publie telles quelles sur l'hôte, sans
-   passer par le proxy.
+3. Gardez les lignes `6881:6881/tcp` et `6881:6881/udp`. Elles publient le port directement sur l'hôte,
+   sans passer par le proxy.
 4. Copiez la DLL dans `/srv/emby/config/plugins/` sur le serveur, puis redéployez ou redémarrez la ressource.
-5. Si Coolify gère les volumes (volumes nommés au lieu de chemins hôtes), repérez le chemin réel du volume
-   `/config` dans l'onglet « Storages » pour y déposer la DLL.
+
+Différences entre les deux images :
+
+| | Officielle `emby/embyserver` | linuxserver (modèle Coolify) |
+|---|---|---|
+| Utilisateur | `UID`/`GID`/`GIDLIST` | `PUID`/`PGID`, utilisateur `abc` |
+| Dossier des plugins | `/config/plugins` | `/config/plugins` |
+| Vérifiée avec Torry | Oui : bout en bout, 48 vérifications | Chargement et démarrage, permissions des volumes |
 
 ## Pare-feu
 

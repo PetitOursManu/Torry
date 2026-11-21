@@ -65,6 +65,122 @@ qBittorrent, ni Radarr ou Sonarr, ni service de débridage).
 - Le moteur démarre en arrière-plan : il ne retarde pas Emby. À l'arrêt, il s'arrête proprement et enregistre
   son état.
 
+## Installation sur un Emby déployé avec Coolify
+
+Ce guide part du service **Emby** proposé par Coolify (« + New » > « Service » > « Emby »). Ce modèle
+utilise l'image `lscr.io/linuxserver/emby:4.10.2`. Emby y tourne sous l'utilisateur `abc` (UID/GID 1000,
+fixé par `PUID`/`PGID`) avec la configuration dans `/config`. Le modèle ne publie aucun port : Coolify sert
+l'interface web par son proxy.
+
+> Vérifié : Torry se charge et démarre dans `lscr.io/linuxserver/emby:4.10.2`. Les plugins vont dans
+> `/config/plugins`, et le runtime est .NET 8.0.28.
+> Non vérifié : le déploiement dans une instance Coolify réelle. Les étapes ci-dessous en découlent.
+
+Toutes les commandes se lancent **en SSH sur le serveur Coolify**.
+
+### 1. Créer le dossier de téléchargement sur le serveur
+
+```sh
+sudo mkdir -p /srv/torry/incomplete /srv/torry/complete
+sudo chown -R 1000:1000 /srv/torry
+```
+
+Le `chown` est indispensable : sans lui, Emby (UID 1000) ne peut pas écrire, et Torry affiche « Permissions
+insuffisantes ». Un volume nommé créé par Docker appartient à `root` : c'est pourquoi on utilise ici un
+dossier de l'hôte.
+
+### 2. Modifier le compose du service dans Coolify
+
+Dans Coolify, ouvrez le service Emby, puis **« Edit Compose File »**. Ajoutez la ligne de volume `/downloads`
+et le bloc `ports`, sans toucher au reste :
+
+```yaml
+services:
+  emby:
+    image: lscr.io/linuxserver/emby:4.10.2
+    environment:
+      - SERVICE_URL_EMBY_8096
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+    volumes:
+      - emby-config:/config
+      - emby-tvshows:/tvshows
+      - emby-movies:/movies
+      - /srv/torry:/downloads          # ← ajout Torry : incomplete/ et complete/
+    ports:                             # ← ajout Torry : port BitTorrent, distinct du web
+      - "6881:6881/tcp"
+      - "6881:6881/udp"
+    # healthcheck : inchangé
+```
+
+- Montez `/srv/torry` **en entier** sur `/downloads`. Ne montez pas `incomplete` et `complete` séparément :
+  le déplacement final reste alors un renommage instantané, sans copie.
+- Le domaine Coolify ne transporte que le web (port 8096). Le port BitTorrent doit être publié ici, et il
+  n'est **pas** transporté par le proxy ni par un tunnel Cloudflare.
+
+Enregistrez, puis cliquez sur **Redeploy**.
+
+### 3. Copier le plugin dans le conteneur
+
+```sh
+# Télécharger la DLL
+curl -L -o PetitOurs.Torry.dll https://github.com/PetitOursManu/Torry/raw/main/artifacts/PetitOurs.Torry.dll
+
+# Trouver le conteneur Emby de Coolify (nom du type emby-<identifiant>)
+docker ps --format '{{.Names}}  {{.Image}}' | grep -i emby
+CONTAINER=emby-xxxxxxxxxxxx          # ← remplacez par le nom affiché
+
+# Copier la DLL dans /config/plugins (volume persistant) et la donner à l'utilisateur abc
+docker cp PetitOurs.Torry.dll "$CONTAINER":/config/plugins/
+docker exec "$CONTAINER" chown abc:abc /config/plugins/PetitOurs.Torry.dll
+```
+
+La DLL se trouve dans le volume `/config` : elle survit aux redéploiements et aux mises à jour de l'image.
+
+### 4. Redémarrer Emby et vérifier
+
+Redémarrez le service depuis Coolify (**Restart**), puis :
+
+```sh
+docker exec "$CONTAINER" grep -i "torry" /config/logs/embyserver.txt | tail -3
+```
+
+Vous devez voir :
+
+```
+Info App: Loading PetitOurs.Torry, Version=0.1.0.0 ... from /config/plugins/PetitOurs.Torry.dll
+Info Torry: Torry démarré : 0 tâche(s), port BitTorrent 6881.
+```
+
+### 5. Ouvrir le port BitTorrent
+
+Ouvrez **6881 en TCP et en UDP** dans le pare-feu du fournisseur (Hetzner, OVH, Scaleway…). Avec UFW :
+`sudo ufw allow 6881/tcp && sudo ufw allow 6881/udp`. Docker contourne souvent UFW : testez depuis une
+autre machine avec `nc -vz <ip-du-serveur> 6881`. Sans port entrant, Torry fonctionne quand même, mais plus
+lentement (voir [DOCKER-COOLIFY.md](docs/DOCKER-COOLIFY.md#sans-port-entrant-accessible)).
+
+### 6. Configurer Emby et Torry
+
+1. Dans le **navigateur**, ouvrez votre domaine Emby et connectez-vous en administrateur.
+2. **Bibliothèques** : ajoutez une bibliothèque (Films, par exemple) avec le dossier `/downloads/complete`.
+   N'ajoutez jamais `/downloads/incomplete`.
+3. Ouvrez **Torry** dans le menu d'administration (ou Plugins, puis Torry for Emby, puis Paramètres).
+   Dans l'onglet **Réglages**, les valeurs par défaut conviennent : `/downloads/incomplete`,
+   `/downloads/complete`, port 6881. Cliquez sur **Enregistrer** : Torry revérifie les dossiers, et les
+   avertissements disparaissent si tout est correct.
+4. Collez un lien magnet ou importez un `.torrent`, choisissez les fichiers, puis lancez le téléchargement.
+
+### Mise à jour et désinstallation (Coolify)
+
+- **Mise à jour** : refaites l'étape 3 avec la nouvelle DLL, puis **Restart**.
+- **Désinstallation** :
+  1. `docker exec "$CONTAINER" rm /config/plugins/PetitOurs.Torry.dll`
+  2. Facultatif : `docker exec "$CONTAINER" rm -rf /config/data/torry /config/plugins/configurations/PetitOurs.Torry.xml`
+  3. **Restart**, puis retirez le volume `/downloads` et les `ports` du compose si vous n'en voulez plus.
+
+  Les fichiers de `/srv/torry` ne sont jamais supprimés automatiquement.
+
 ## Documentation
 
 - [Installation, mise à jour, désinstallation](docs/INSTALLATION.md)

@@ -77,7 +77,12 @@ directement dans `<destination>/<Nom du torrent>/` : il n'y a pas d'étape inter
 
 **Onglet « Fichiers ».** Un explorateur limité au dossier des téléchargements terminés et aux destinations :
 
-- naviguer, créer un dossier, **renommer**, **déplacer** un fichier ou un dossier ;
+- naviguer dans les dossiers et sous-dossiers : un clic sur la ligne d'un dossier l'ouvre ; « Dossier
+  parent » et le fil d'Ariane permettent de remonter ;
+- créer un dossier, **renommer**, **déplacer** un fichier ou un dossier ;
+- **sélection multiple** : cochez plusieurs fichiers ou dossiers (ou « Tout sélectionner »), puis
+  « Déplacer les N éléments… ». La destination est proposée d'après l'ensemble de la sélection, et un
+  déplacement est lancé par élément ;
 - la fenêtre de déplacement **analyse le contenu** (« Dossier · 12 fichiers dont 12 audio · type détecté :
   Musique »), présélectionne la destination conseillée et signale les bibliothèques d'un autre type. Elle
   procède en trois étapes (bibliothèque, sous-dossier facultatif, nom), puis affiche le résultat
@@ -214,7 +219,7 @@ docker exec "$CONTAINER" grep -i "torry" /config/logs/embyserver.txt | tail -3
 Vous devez voir :
 
 ```
-Info App: Loading PetitOurs.Torry, Version=0.3.2.0 ... from /config/plugins/PetitOurs.Torry.dll
+Info App: Loading PetitOurs.Torry, Version=0.3.4.0 ... from /config/plugins/PetitOurs.Torry.dll
 Info Torry: Torry démarré : 0 tâche(s), port BitTorrent 6881.
 ```
 

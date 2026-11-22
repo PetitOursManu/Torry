@@ -62,6 +62,20 @@
             .torryPage .torry-fs-name button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; padding: 0; text-align: left; font-weight: 600; }
             .torryPage .torry-fs-meta { opacity: .7; font-size: .85em; white-space: nowrap; }
             .torryPage .torry-fs-icon { opacity: .75; font-size: 1.3em; width: 1.3em; text-align: center; }
+            .torryPage .torry-fs-dir { cursor: pointer; }
+            .torryPage .torry-fs-dir .torry-fs-name { font-weight: 600; }
+            .torryPage .torry-fs-dir:hover .torry-fs-name { text-decoration: underline; }
+            .torryPage .torry-fs-chevron { opacity: .6; width: 1.2em; text-align: center; }
+            .torryPage .torry-fs-row.is-selected { background: rgba(82,181,75,.14); }
+            .torryPage .torry-fs-check, .torryPage .torry-fs-all { width: 1.15em; height: 1.15em; cursor: pointer; accent-color: #52b54b; }
+            .torryPage .torry-fs-location { display: flex; align-items: center; gap: .6em; flex-wrap: wrap; margin: .8em 0 .4em; }
+            .torryPage .torry-fs-location .torry-crumbs { margin: 0; font-weight: 600; }
+            .torryPage .torry-fs-location-label { opacity: .7; }
+            .torryPage .torry-fs-toolbar { display: flex; align-items: center; gap: .7em; flex-wrap: wrap; padding: .5em .7em; border: 1px solid rgba(128,128,128,.3); border-bottom: 0; border-radius: .5em .5em 0 0; background: rgba(128,128,128,.06); }
+            .torryPage .torry-fs-toolbar + .torry-fs { border-radius: 0 0 .5em .5em; }
+            .torryPage .torry-fs-all-label { display: flex; align-items: center; gap: .45em; cursor: pointer; }
+            .torryPage .torry-fs-selcount { opacity: .8; font-size: .92em; }
+            .torryPage .torry-move-items { max-height: 7em; overflow: auto; margin-top: .4em; }
             .torryPage .torry-dest-row { display: grid; grid-template-columns: 1.2fr 1fr 2fr auto; gap: .5em; margin-bottom: .5em; align-items: center; }
             .torryPage select.torry-input { appearance: auto; }
             .torryPage .torry-dialog .torry-input { background: rgba(255,255,255,.06); color: #eee; }
@@ -126,8 +140,18 @@
                         <button type="button" class="torry-btn torry-btn-small torry-fs-reload">Actualiser</button>
                     </div>
                 </div>
-                <div class="torry-crumbs torry-fs-crumbs"></div>
+                <div class="torry-fs-location">
+                    <button type="button" class="torry-btn torry-btn-small torry-fs-up" title="Remonter d'un niveau"><i class="md-icon" style="font-size:1.1em;vertical-align:middle;">arrow_upward</i> Dossier parent</button>
+                    <span class="torry-fs-location-label">Emplacement :</span>
+                    <span class="torry-crumbs torry-fs-crumbs"></span>
+                </div>
                 <div class="torry-fs-message"></div>
+                <div class="torry-fs-toolbar">
+                    <label class="torry-fs-all-label"><input type="checkbox" class="torry-fs-all" /> Tout sélectionner</label>
+                    <span class="torry-fs-selcount"></span>
+                    <button type="button" class="torry-btn torry-btn-small torry-fs-clear-sel" style="margin-left:auto;" disabled>Désélectionner</button>
+                    <button type="button" class="torry-btn torry-btn-primary torry-btn-small torry-fs-move-sel" disabled>Déplacer la sélection…</button>
+                </div>
                 <div class="torry-fs torry-fs-list"></div>
                 <div class="torry-help" style="font-size:.85em;opacity:.7;margin-top:.6em;">Seuls le dossier des téléchargements terminés et les dossiers de destination (onglet Réglages) sont accessibles. Les fichiers en cours de partage peuvent être déplacés : leur partage est alors arrêté.</div>
                 <h3 style="margin:1.4em 0 .6em;font-size:1.05em;">Déplacements</h3>
@@ -271,8 +295,11 @@
                 <div class="torry-move-where">Vous êtes dans : <span class="torry-crumbs torry-move-crumbs"></span></div>
                 <div class="torry-files torry-pick torry-move-folders"></div>
 
-                <div class="torry-step"><span class="torry-step-num">3</span> Nom à l'arrivée</div>
-                <input class="torry-input torry-move-name" type="text" autocomplete="off" spellcheck="false" aria-label="Nom à l'arrivée" />
+                <div class="torry-move-name-step">
+                    <div class="torry-step"><span class="torry-step-num">3</span> Nom à l'arrivée</div>
+                    <input class="torry-input torry-move-name" type="text" autocomplete="off" spellcheck="false" aria-label="Nom à l'arrivée" />
+                </div>
+                <div class="torry-move-items torry-note" hidden></div>
 
                 <div class="torry-move-result"></div>
                 <div class="torry-dialog-foot" style="justify-content:flex-end;">

@@ -52,6 +52,51 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         return parts.join(' · ');
     }
 
+    function mergeAnalyses(list, count) {
+        if (!list.length) {
+            return null;
+        }
+        if (list.length === 1 && count === 1) {
+            return list[0];
+        }
+        var merged = { IsDirectory: true, FileCount: 0, TotalBytes: 0, Categories: {}, CompatibleContentTypes: null };
+        var votes = {};
+        var types = {};
+        list.forEach(function (a) {
+            merged.FileCount += a.FileCount || 0;
+            merged.TotalBytes += a.TotalBytes || 0;
+            Object.keys(a.Categories || {}).forEach(function (k) { merged.Categories[k] = (merged.Categories[k] || 0) + a.Categories[k]; });
+            if (a.SuggestedRootId) {
+                votes[a.SuggestedRootId] = (votes[a.SuggestedRootId] || 0) + 1;
+            }
+            if (a.SuggestedContentType) {
+                types[a.SuggestedContentType] = a.SuggestedContentTypeLabel;
+            }
+            // Bibliothèques compatibles avec TOUS les éléments.
+            merged.CompatibleContentTypes = merged.CompatibleContentTypes === null
+                ? (a.CompatibleContentTypes || []).slice()
+                : merged.CompatibleContentTypes.filter(function (t) { return (a.CompatibleContentTypes || []).indexOf(t) >= 0; });
+        });
+        var best = Object.keys(votes).sort(function (x, y) { return votes[y] - votes[x]; })[0];
+        merged.SuggestedRootId = best || null;
+        var typeKeys = Object.keys(types);
+        merged.SuggestedContentTypeLabel = typeKeys.length === 1 ? types[typeKeys[0]] : (typeKeys.length > 1 ? 'types variés' : null);
+        merged.CompatibleContentTypes = merged.CompatibleContentTypes || [];
+        return merged;
+    }
+
+    function describeSelection(analysis, count) {
+        if (!analysis) {
+            return count + ' éléments';
+        }
+        var counts = Object.keys(analysis.Categories || {}).filter(function (k) { return k !== 'other'; }).map(function (k) {
+            return analysis.Categories[k] + ' ' + (CATEGORY_LABELS[k] || k);
+        });
+        return count + ' éléments · ' + analysis.FileCount + ' fichier(s)' + (counts.length ? ' dont ' + counts.join(', ') : '')
+            + ' · ' + formatBytes(analysis.TotalBytes)
+            + ' · ' + (analysis.SuggestedContentTypeLabel ? 'type détecté : ' + analysis.SuggestedContentTypeLabel : 'type non reconnu');
+    }
+
     function newId() {
         return Math.random().toString(36).substring(2, 10) + Date.now().toString(36).substring(4);
     }
@@ -335,19 +380,49 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
                 instance.browse(instance.fs.root, b.getAttribute('data-path'));
             }
         });
-        view.querySelector('.torry-fs-list').addEventListener('click', function (e) {
+        var fsList = view.querySelector('.torry-fs-list');
+        fsList.addEventListener('click', function (e) {
+            if (e.target.closest('.torry-fs-check')) {
+                return; // géré par « change »
+            }
             var b = e.target.closest('button[data-fs]');
-            if (!b) {
+            if (b) {
+                var path = b.getAttribute('data-path');
+                var action = b.getAttribute('data-fs');
+                if (action === 'open') {
+                    instance.browse(instance.fs.root, path);
+                } else if (action === 'move') {
+                    instance.openMove([path]);
+                } else if (action === 'rename') {
+                    instance.renameEntry(path);
+                }
                 return;
             }
-            var path = b.getAttribute('data-path');
-            var action = b.getAttribute('data-fs');
-            if (action === 'open') {
-                instance.browse(instance.fs.root, path);
-            } else if (action === 'move') {
-                instance.openMove(path);
-            } else if (action === 'rename') {
-                instance.renameEntry(path);
+            // Clic n'importe où sur la ligne d'un dossier : on l'ouvre.
+            var row = e.target.closest('.torry-fs-dir');
+            if (row) {
+                instance.browse(instance.fs.root, row.getAttribute('data-path'));
+            }
+        });
+        fsList.addEventListener('change', function (e) {
+            var box = e.target.closest('.torry-fs-check');
+            if (box) {
+                instance.toggleSelection(box.getAttribute('data-path'), box.checked);
+            }
+        });
+        view.querySelector('.torry-fs-all').addEventListener('change', function (e) {
+            instance.selectAll(e.target.checked);
+        });
+        view.querySelector('.torry-fs-clear-sel').addEventListener('click', function () { instance.selectAll(false); });
+        view.querySelector('.torry-fs-move-sel').addEventListener('click', function () {
+            var paths = Object.keys(instance.fs.selected || {});
+            if (paths.length) {
+                instance.openMove(paths);
+            }
+        });
+        view.querySelector('.torry-fs-up').addEventListener('click', function () {
+            if (instance.fs.path) {
+                instance.browse(instance.fs.root, parentPath(instance.fs.path));
             }
         });
 
@@ -790,19 +865,33 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         if (!rootId) {
             return Promise.resolve();
         }
+        var changed = rootId !== this.fs.root || (path || '') !== this.fs.path;
         this.fs.root = rootId;
         this.fs.path = path || '';
+        if (changed || !this.fs.selected) {
+            this.fs.selected = {};
+        }
         this.view.querySelector('.torry-fs-root').value = rootId;
+        this.view.querySelector('.torry-fs-up').disabled = !this.fs.path;
         var message = this.view.querySelector('.torry-fs-message');
         return api('GET', 'Torry/Files?Root=' + encodeURIComponent(rootId) + '&Path=' + encodeURIComponent(this.fs.path)).then(function (listing) {
             message.innerHTML = '';
             instance.listing = listing;
+            // Après un rafraîchissement, on ne garde sélectionnés que les éléments encore présents.
+            var present = {};
+            (listing.Entries || []).forEach(function (e) { present[e.Path] = true; });
+            Object.keys(instance.fs.selected).forEach(function (p) {
+                if (!present[p]) {
+                    delete instance.fs.selected[p];
+                }
+            });
             instance.renderCrumbs(instance.view.querySelector('.torry-fs-crumbs'), listing.RootName, listing.Path);
             instance.renderListing(listing);
         }, function (err) {
             return readError(err).then(function (m) {
                 message.innerHTML = '<div class="torry-error">' + escapeHtml(m) + '</div>';
                 instance.view.querySelector('.torry-fs-list').innerHTML = '';
+                instance.updateSelectionUi();
             });
         });
     };
@@ -818,22 +907,21 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
     };
 
     View.prototype.renderListing = function (listing) {
+        var selected = this.fs.selected || {};
         var html = '';
-        if (listing.Path) {
-            html += '<div class="torry-fs-row"><i class="md-icon torry-fs-icon">arrow_upward</i><div class="torry-fs-name"><button type="button" data-fs="open" data-path="'
-                + escapeHtml(parentPath(listing.Path)) + '">Dossier parent</button></div></div>';
-        }
         (listing.Entries || []).forEach(function (e) {
-            var name = e.IsDirectory
-                ? '<button type="button" data-fs="open" data-path="' + escapeHtml(e.Path) + '">' + escapeHtml(e.Name) + '</button>'
-                : escapeHtml(e.Name);
-            var meta = e.IsDirectory ? '' : formatBytes(e.Size);
-            html += '<div class="torry-fs-row">'
+            var isSel = !!selected[e.Path];
+            var meta = e.IsDirectory ? 'Dossier' : formatBytes(e.Size);
+            html += '<div class="torry-fs-row' + (e.IsDirectory ? ' torry-fs-dir' : '') + (isSel ? ' is-selected' : '') + '" data-path="' + escapeHtml(e.Path) + '"'
+                + (e.IsDirectory ? ' title="Ouvrir le dossier"' : '') + '>'
+                + '<input type="checkbox" class="torry-fs-check" data-path="' + escapeHtml(e.Path) + '"' + (isSel ? ' checked' : '')
+                + ' aria-label="Sélectionner ' + escapeHtml(e.Name) + '" />'
                 + '<i class="md-icon torry-fs-icon">' + (ICONS[e.Category] || 'description') + '</i>'
-                + '<div class="torry-fs-name">' + name + '</div>'
+                + '<div class="torry-fs-name">' + escapeHtml(e.Name) + '</div>'
                 + '<div class="torry-fs-meta">' + escapeHtml(meta) + '</div>'
                 + '<button type="button" class="torry-btn torry-btn-small" data-fs="move" data-path="' + escapeHtml(e.Path) + '">Déplacer…</button>'
                 + '<button type="button" class="torry-btn torry-btn-small" data-fs="rename" data-path="' + escapeHtml(e.Path) + '">Renommer…</button>'
+                + '<i class="md-icon torry-fs-chevron">' + (e.IsDirectory ? 'chevron_right' : '') + '</i>'
                 + '</div>';
         });
         if (!(listing.Entries || []).length) {
@@ -843,6 +931,46 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             html += '<div class="torry-note" style="padding:.5em .7em;">Liste tronquée (2000 éléments maximum).</div>';
         }
         this.view.querySelector('.torry-fs-list').innerHTML = html;
+        this.updateSelectionUi();
+    };
+
+    View.prototype.toggleSelection = function (path, on) {
+        if (on) {
+            this.fs.selected[path] = true;
+        } else {
+            delete this.fs.selected[path];
+        }
+        this.updateSelectionUi();
+    };
+
+    View.prototype.selectAll = function (on) {
+        var instance = this;
+        this.fs.selected = {};
+        if (on) {
+            ((this.listing && this.listing.Entries) || []).forEach(function (e) { instance.fs.selected[e.Path] = true; });
+        }
+        this.view.querySelectorAll('.torry-fs-list .torry-fs-check').forEach(function (box) {
+            box.checked = !!on;
+        });
+        this.updateSelectionUi();
+    };
+
+    View.prototype.updateSelectionUi = function () {
+        var selected = this.fs.selected || {};
+        var count = Object.keys(selected).length;
+        var total = ((this.listing && this.listing.Entries) || []).length;
+        this.view.querySelectorAll('.torry-fs-list .torry-fs-row[data-path]').forEach(function (row) {
+            row.classList.toggle('is-selected', !!selected[row.getAttribute('data-path')]);
+        });
+        var all = this.view.querySelector('.torry-fs-all');
+        all.checked = total > 0 && count === total;
+        all.indeterminate = count > 0 && count < total;
+        all.disabled = total === 0;
+        this.view.querySelector('.torry-fs-selcount').textContent = count ? count + ' élément(s) sélectionné(s)' : '';
+        var move = this.view.querySelector('.torry-fs-move-sel');
+        move.disabled = count === 0;
+        move.textContent = count > 1 ? 'Déplacer les ' + count + ' éléments…' : 'Déplacer la sélection…';
+        this.view.querySelector('.torry-fs-clear-sel').disabled = count === 0;
     };
 
     View.prototype.findEntry = function (path) {
@@ -902,33 +1030,49 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         this.fsNoticeTimer = setTimeout(function () { box.innerHTML = ''; }, isError ? 12000 : 6000);
     };
 
-    View.prototype.openMove = function (path) {
+    View.prototype.openMove = function (paths) {
         var instance = this;
-        var entry = this.findEntry(path) || { Name: path.split('/').pop(), IsDirectory: true };
-        this.move = { sourceRoot: this.fs.root, sourcePath: path, entry: entry, root: null, path: '', analysis: null };
-        this.view.querySelector('.torry-move-title').textContent = 'Déplacer « ' + entry.Name + ' »';
-        this.view.querySelector('.torry-move-name').value = entry.Name;
+        paths = (paths || []).slice();
+        var entries = paths.map(function (p) {
+            return instance.findEntry(p) || { Name: p.split('/').pop(), Path: p, IsDirectory: true };
+        });
+        var single = paths.length === 1;
+        this.move = { sourceRoot: this.fs.root, sourcePaths: paths, entries: entries, root: null, path: '', analysis: null };
+        this.view.querySelector('.torry-move-title').textContent = single
+            ? 'Déplacer « ' + entries[0].Name + ' »'
+            : 'Déplacer ' + paths.length + ' éléments';
+        this.view.querySelector('.torry-move-name').value = single ? entries[0].Name : '';
+        this.view.querySelector('.torry-move-name-step').hidden = !single;
+        var items = this.view.querySelector('.torry-move-items');
+        items.hidden = single;
+        items.innerHTML = single ? '' : entries.map(function (e) {
+            return '<div>• ' + escapeHtml(e.Name) + (e.IsDirectory ? ' <span class="torry-fs-meta">(dossier)</span>' : '') + '</div>';
+        }).join('');
         this.view.querySelector('.torry-move-summary').textContent = 'Analyse du contenu…';
         this.view.querySelector('.torry-move-hint').textContent = '';
         this.view.querySelector('.torry-move-nodest').hidden = this.destinationRoots().length > 0;
         this.view.querySelector('.torry-move-modal').hidden = false;
 
-        var done = function (analysis) {
+        var analyze = function (p) {
+            return api('GET', 'Torry/Files/Analyze?Root=' + encodeURIComponent(instance.fs.root) + '&Path=' + encodeURIComponent(p))
+                .then(function (a) { return a; }, function () { return null; });
+        };
+        Promise.all(paths.slice(0, 30).map(analyze)).then(function (results) {
+            var analysis = mergeAnalyses(results.filter(function (a) { return !!a; }), paths.length);
             instance.move.analysis = analysis;
-            instance.view.querySelector('.torry-move-summary').textContent = describeAnalysis(analysis, entry);
+            instance.view.querySelector('.torry-move-summary').textContent = single
+                ? describeAnalysis(analysis, entries[0])
+                : describeSelection(analysis, paths.length);
             instance.renderMoveRoots();
             var select = instance.view.querySelector('.torry-move-root');
-            var start = analysis && analysis.SuggestedRootId ? analysis.SuggestedRootId : instance.fs.root;
-            select.value = start;
+            select.value = analysis && analysis.SuggestedRootId ? analysis.SuggestedRootId : instance.fs.root;
             if (!select.value && select.options.length) {
                 select.selectedIndex = 0;
             }
             // Destination conseillée : on part de sa racine ; sinon du dossier courant.
             var startPath = (analysis && analysis.SuggestedRootId) ? '' : (select.value === instance.fs.root ? instance.fs.path : '');
             instance.browseMoveTarget(select.value, startPath);
-        };
-        api('GET', 'Torry/Files/Analyze?Root=' + encodeURIComponent(this.fs.root) + '&Path=' + encodeURIComponent(path))
-            .then(done, function () { done(null); });
+        });
     };
 
     View.prototype.browseMoveTarget = function (rootId, path) {
@@ -948,14 +1092,16 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             }
             var folders = (listing.Entries || []).filter(function (e) { return e.IsDirectory; });
             folders.forEach(function (e) {
-                var isSelf = instance.move.sourceRoot === rootId && (e.Path === instance.move.sourcePath || e.Path.indexOf(instance.move.sourcePath + '/') === 0);
+                var isSelf = instance.move.sourceRoot === rootId && instance.move.sourcePaths.some(function (p) {
+                    return e.Path === p || e.Path.indexOf(p + '/') === 0;
+                });
                 html += '<div class="torry-fs-row"><i class="md-icon torry-fs-icon">folder</i><div class="torry-fs-name">'
                     + (isSelf ? escapeHtml(e.Name) + ' <span class="torry-fs-meta">(élément déplacé)</span>'
                         : '<button type="button" data-path="' + escapeHtml(e.Path) + '">' + escapeHtml(e.Name) + '</button>')
                     + '</div>' + (isSelf ? '' : '<span class="torry-fs-meta">ouvrir ›</span>') + '</div>';
             });
             if (!folders.length) {
-                html += '<div class="torry-note" style="padding:.6em .7em;">Aucun sous-dossier : l\'élément sera placé directement ici.</div>';
+                html += '<div class="torry-note" style="padding:.6em .7em;">Aucun sous-dossier : ' + (instance.move.sourcePaths.length > 1 ? 'les éléments seront placés' : 'l\'élément sera placé') + ' directement ici.</div>';
             }
             container.innerHTML = html;
             instance.updateMoveTarget();
@@ -1000,21 +1146,47 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
     };
 
     View.prototype.updateMoveTarget = function () {
+        var single = this.move.sourcePaths.length === 1;
         var name = this.view.querySelector('.torry-move-name').value.trim();
         var folders = [this.move.rootName || ''].concat(this.move.path ? this.move.path.split('/') : []);
         var result = this.view.querySelector('.torry-move-result');
-        result.innerHTML = 'Sera déplacé dans : <strong>' + escapeHtml(folders.join(' › ')) + '</strong>'
-            + (name ? '<span class="torry-fs-meta">sous le nom « ' + escapeHtml(name) + ' »</span>' : '');
+        result.innerHTML = (single ? 'Sera déplacé dans : ' : this.move.sourcePaths.length + ' éléments seront déplacés dans : ')
+            + '<strong>' + escapeHtml(folders.join(' › ')) + '</strong>'
+            + (single && name ? '<span class="torry-fs-meta">sous le nom « ' + escapeHtml(name) + ' »</span>' : '');
         var ok = this.view.querySelector('.torry-move-ok');
-        ok.disabled = !name;
+        ok.disabled = single && !name;
         ok.textContent = 'Déplacer dans « ' + folders[folders.length - 1] + ' »';
     };
 
     View.prototype.confirmMove = function () {
-        var name = this.view.querySelector('.torry-move-name').value.trim();
+        var instance = this;
         var m = this.move;
+        var single = m.sourcePaths.length === 1;
+        var name = this.view.querySelector('.torry-move-name').value.trim();
         this.view.querySelector('.torry-move-modal').hidden = true;
-        this.submitMove(m.sourceRoot, m.sourcePath, m.root, m.path, name === m.entry.Name ? '' : name);
+        if (single) {
+            this.submitMove(m.sourceRoot, m.sourcePaths[0], m.root, m.path, name === m.entries[0].Name ? '' : name);
+            return;
+        }
+        // Plusieurs éléments : un déplacement par élément, exécutés l'un après l'autre côté serveur.
+        loading.show();
+        var errors = [];
+        var chain = Promise.resolve();
+        m.sourcePaths.forEach(function (p) {
+            chain = chain.then(function () {
+                return api('POST', 'Torry/Files/Move', { SourceRoot: m.sourceRoot, SourcePath: p, TargetRoot: m.root, TargetPath: m.path, NewName: '' })
+                    .then(null, function (err) {
+                        return readError(err).then(function (msg) { errors.push(p.split('/').pop() + ' : ' + msg); });
+                    });
+            });
+        });
+        chain.then(function () {
+            loading.hide();
+            var launched = m.sourcePaths.length - errors.length;
+            instance.notifyFiles(launched + ' déplacement(s) lancé(s).' + (errors.length ? ' Refusés : ' + errors.join(' ; ') : ' Suivez la progression ci-dessous.'), errors.length > 0);
+            instance.selectAll(false);
+            instance.refreshOperations();
+        });
     };
 
     View.prototype.submitMove = function (sourceRoot, sourcePath, targetRoot, targetPath, newName) {
@@ -1042,7 +1214,15 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             if (json === instance.lastOpsJson) {
                 return;
             }
-            var hadRunning = (instance.lastOps || []).some(function (o) { return o.State === 'Running' || o.State === 'Pending'; });
+            var firstLoad = !instance.finishedOps;
+            instance.finishedOps = instance.finishedOps || {};
+            var newlyFinished = false;
+            ops.forEach(function (o) {
+                if ((o.State === 'Done' || o.State === 'Error') && !instance.finishedOps[o.Id]) {
+                    instance.finishedOps[o.Id] = true;
+                    newlyFinished = true;
+                }
+            });
             instance.lastOpsJson = json;
             instance.lastOps = ops;
             var html = ops.map(function (o) {
@@ -1057,8 +1237,7 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
                     + '</div>';
             }).join('');
             instance.view.querySelector('.torry-fs-ops').innerHTML = html || '<div class="torry-empty" style="padding:.6em 0;">Aucun déplacement récent.</div>';
-            var running = ops.some(function (o) { return o.State === 'Running' || o.State === 'Pending'; });
-            if (hadRunning && !running && instance.activeTab === 'files') {
+            if (newlyFinished && !firstLoad && instance.activeTab === 'files') {
                 instance.browse(instance.fs.root, instance.fs.path);
             }
         });

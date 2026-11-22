@@ -109,6 +109,21 @@ Note : cette empreinte est celle de la version vérifiée ce jour-là. La DLL pu
 (licence MIT, indicateur d'écoute du port), son empreinte a donc changé. `./build.sh` affiche celle de la
 version courante.
 
+## 5 septies. Navigation et sélection multiple (versions 0.3.3 et 0.3.4)
+
+Dans `lscr.io/linuxserver/emby:4.10.2`, avec des albums imbriqués (`Anastacia…/CD1`, `CD2`…) et la
+bibliothèque Music préparée :
+
+| Vérification | Résultat |
+|---|---|
+| Clic sur la ligne d'un dossier | Ouverture de `Anastacia…`, puis de `CD1` (icônes audio, tailles) ; fil d'Ariane complet |
+| Fil d'Ariane et « Dossier parent » | Retour à la racine |
+| Sélection de 2 dossiers | Lignes surlignées, « Tout sélectionner » partiellement coché, bouton « Déplacer les 2 éléments… » |
+| Fenêtre pour 2 éléments | « 2 éléments · 4 fichier(s) dont 4 audio · type détecté : Musique », Music conseillé, liste des éléments, pas de champ « Nom » |
+| Déplacement groupé | 2 opérations terminées, « Bibliothèque actualisée » |
+| Rafraîchissement de la liste | Les dossiers déplacés disparaissent tout seuls, ce qui corrige le défaut signalé : un déplacement plus rapide que le rafraîchissement laissait l'élément affiché |
+| Barre de sélection (0.3.4) | Hauteur constante : en 0.3.3, cocher une case ajoutait une ligne, décalait la liste et faisait ouvrir un dossier au clic suivant |
+
 ## 5 sexies. « Préparer les bibliothèques » (version 0.3.2)
 
 Reproduction du cas réel dans `lscr.io/linuxserver/emby:4.10.2` : les bibliothèques Films (`/media/Films`) et

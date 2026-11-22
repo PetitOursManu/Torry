@@ -111,6 +111,15 @@ namespace PetitOurs.Torry.Api
         public string Path { get; set; }
     }
 
+    [Route("/Torry/Files/Analyze", "GET", Summary = "Type de contenu d'un fichier ou dossier et destination conseillée")]
+    [Authenticated(Roles = "admin")]
+    public class AnalyzeTorryFile : IReturn<ItemAnalysisView>
+    {
+        public string Root { get; set; }
+
+        public string Path { get; set; }
+    }
+
     [Route("/Torry/Files/Move", "POST", Summary = "Déplace ou renomme un fichier ou un dossier (en arrière-plan)")]
     [Authenticated(Roles = "admin")]
     public class MoveTorryFile : IReturn<MoveOperationView>
@@ -274,6 +283,8 @@ namespace PetitOurs.Torry.Api
         }
 
         public object Get(GetTorryFiles request) => Guard(() => Files().List(request.Root, request.Path));
+
+        public object Get(AnalyzeTorryFile request) => Guard(() => Files().Analyze(request.Root, request.Path));
 
         public object Post(MoveTorryFile request) =>
             Guard(() => Files().StartMove(request.SourceRoot, request.SourcePath, request.TargetRoot, request.TargetPath, request.NewName));

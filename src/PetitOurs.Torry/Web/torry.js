@@ -32,6 +32,26 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         return i < 0 ? '' : path.substring(0, i);
     }
 
+    var CATEGORY_LABELS = { video: 'vidéo', audio: 'audio', image: 'image', book: 'livre', subtitle: 'sous-titre', other: 'autre' };
+
+    function describeAnalysis(analysis, entry) {
+        if (!analysis) {
+            return entry.IsDirectory ? 'Dossier' : 'Fichier';
+        }
+        var parts = [];
+        if (analysis.IsDirectory) {
+            var counts = Object.keys(analysis.Categories || {}).filter(function (k) { return k !== 'other'; }).map(function (k) {
+                return analysis.Categories[k] + ' ' + (CATEGORY_LABELS[k] || k);
+            });
+            parts.push('Dossier · ' + analysis.FileCount + ' fichier(s)' + (counts.length ? ' dont ' + counts.join(', ') : '') + (analysis.Truncated ? ' (analyse partielle)' : ''));
+        } else {
+            parts.push('Fichier ' + (CATEGORY_LABELS[analysis.DominantCategory] || ''));
+        }
+        parts.push(formatBytes(analysis.TotalBytes));
+        parts.push(analysis.SuggestedContentTypeLabel ? 'type détecté : ' + analysis.SuggestedContentTypeLabel : 'type non reconnu');
+        return parts.join(' · ');
+    }
+
     function newId() {
         return Math.random().toString(36).substring(2, 10) + Date.now().toString(36).substring(4);
     }
@@ -349,6 +369,14 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         });
         view.querySelector('.torry-move-name').addEventListener('input', function () { instance.updateMoveTarget(); });
         view.querySelector('.torry-move-ok').addEventListener('click', function () { instance.confirmMove(); });
+        view.querySelector('.torry-move-configure').addEventListener('click', function () {
+            moveModal.hidden = true;
+            instance.showTab('settings');
+            var dests = view.querySelector('.torry-dests');
+            if (dests && dests.scrollIntoView) {
+                dests.scrollIntoView({ block: 'center' });
+            }
+        });
 
         // Fenêtre de saisie
         var promptModal = view.querySelector('.torry-prompt-modal');
@@ -874,25 +902,32 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
     };
 
     View.prototype.openMove = function (path) {
-        var entry = this.findEntry(path) || { Name: path.split('/').pop(), CompatibleContentTypes: [], IsDirectory: true };
-        this.move = { sourceRoot: this.fs.root, sourcePath: path, entry: entry, root: null, path: '' };
+        var instance = this;
+        var entry = this.findEntry(path) || { Name: path.split('/').pop(), IsDirectory: true };
+        this.move = { sourceRoot: this.fs.root, sourcePath: path, entry: entry, root: null, path: '', analysis: null };
         this.view.querySelector('.torry-move-title').textContent = 'Déplacer « ' + entry.Name + ' »';
         this.view.querySelector('.torry-move-name').value = entry.Name;
-
-        // Destination conseillée : première racine dont le type accepte ce fichier.
-        var roots = this.roots || [];
-        var compatible = entry.CompatibleContentTypes || [];
-        var suggested = roots.filter(function (r) { return r.ContentType && r.ContentType !== 'mixed' && compatible.indexOf(r.ContentType) >= 0 && r.Id !== this.fs.root; }, this)[0];
-        var select = this.view.querySelector('.torry-move-root');
-        this.renderRootSelect(select, (suggested || roots[0] || {}).Id);
-        var hint = '';
-        if (!entry.IsDirectory && compatible.length) {
-            var names = roots.filter(function (r) { return r.ContentType && compatible.indexOf(r.ContentType) >= 0; }).map(function (r) { return r.Name; });
-            hint = names.length ? 'Destinations compatibles avec ce type de fichier : ' + names.join(', ') + '.' : 'Aucune destination configurée pour ce type de fichier.';
-        }
-        this.view.querySelector('.torry-move-hint').textContent = hint;
+        this.view.querySelector('.torry-move-summary').textContent = 'Analyse du contenu…';
+        this.view.querySelector('.torry-move-hint').textContent = '';
+        this.view.querySelector('.torry-move-nodest').hidden = this.destinationRoots().length > 0;
         this.view.querySelector('.torry-move-modal').hidden = false;
-        this.browseMoveTarget(select.value, '');
+
+        var done = function (analysis) {
+            instance.move.analysis = analysis;
+            instance.view.querySelector('.torry-move-summary').textContent = describeAnalysis(analysis, entry);
+            instance.renderMoveRoots();
+            var select = instance.view.querySelector('.torry-move-root');
+            var start = analysis && analysis.SuggestedRootId ? analysis.SuggestedRootId : instance.fs.root;
+            select.value = start;
+            if (!select.value && select.options.length) {
+                select.selectedIndex = 0;
+            }
+            // Destination conseillée : on part de sa racine ; sinon du dossier courant.
+            var startPath = (analysis && analysis.SuggestedRootId) ? '' : (select.value === instance.fs.root ? instance.fs.path : '');
+            instance.browseMoveTarget(select.value, startPath);
+        };
+        api('GET', 'Torry/Files/Analyze?Root=' + encodeURIComponent(this.fs.root) + '&Path=' + encodeURIComponent(path))
+            .then(done, function () { done(null); });
     };
 
     View.prototype.browseMoveTarget = function (rootId, path) {
@@ -900,40 +935,78 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         this.move.root = rootId;
         this.move.path = path || '';
         this.view.querySelector('.torry-move-root').value = rootId;
+        this.renderMoveHint();
         var container = this.view.querySelector('.torry-move-folders');
         return api('GET', 'Torry/Files?Root=' + encodeURIComponent(rootId) + '&Path=' + encodeURIComponent(this.move.path)).then(function (listing) {
+            instance.move.rootName = listing.RootName;
             instance.renderCrumbs(instance.view.querySelector('.torry-move-crumbs'), listing.RootName, listing.Path);
             var html = '';
             if (listing.Path) {
-                html += '<div class="torry-file"><i class="md-icon">arrow_upward</i><span class="torry-file-path"><button type="button" class="torry-btn torry-btn-small" data-path="'
-                    + escapeHtml(parentPath(listing.Path)) + '">Dossier parent</button></span></div>';
+                html += '<div class="torry-fs-row"><i class="md-icon torry-fs-icon">arrow_upward</i><div class="torry-fs-name"><button type="button" data-path="'
+                    + escapeHtml(parentPath(listing.Path)) + '">Remonter d\'un niveau</button></div></div>';
             }
-            (listing.Entries || []).filter(function (e) { return e.IsDirectory; }).forEach(function (e) {
+            var folders = (listing.Entries || []).filter(function (e) { return e.IsDirectory; });
+            folders.forEach(function (e) {
                 var isSelf = instance.move.sourceRoot === rootId && (e.Path === instance.move.sourcePath || e.Path.indexOf(instance.move.sourcePath + '/') === 0);
-                html += '<div class="torry-file"><i class="md-icon">folder</i><span class="torry-file-path">'
-                    + (isSelf ? escapeHtml(e.Name) : '<button type="button" class="torry-btn torry-btn-small" data-path="' + escapeHtml(e.Path) + '">' + escapeHtml(e.Name) + '</button>')
-                    + '</span></div>';
+                html += '<div class="torry-fs-row"><i class="md-icon torry-fs-icon">folder</i><div class="torry-fs-name">'
+                    + (isSelf ? escapeHtml(e.Name) + ' <span class="torry-fs-meta">(élément déplacé)</span>'
+                        : '<button type="button" data-path="' + escapeHtml(e.Path) + '">' + escapeHtml(e.Name) + '</button>')
+                    + '</div>' + (isSelf ? '' : '<span class="torry-fs-meta">ouvrir ›</span>') + '</div>';
             });
-            if (!html) {
-                html = '<div class="torry-empty" style="padding:.8em;">Aucun sous-dossier.</div>';
+            if (!folders.length) {
+                html += '<div class="torry-note" style="padding:.6em .7em;">Aucun sous-dossier : l\'élément sera placé directement ici.</div>';
             }
             container.innerHTML = html;
-            instance.updateMoveTarget(listing.RootName);
+            instance.updateMoveTarget();
         }, function (err) {
             return readError(err).then(function (m) {
                 container.innerHTML = '<div class="torry-error">' + escapeHtml(m) + '</div>';
+                instance.view.querySelector('.torry-move-ok').disabled = true;
             });
         });
     };
 
-    View.prototype.updateMoveTarget = function (rootName) {
-        if (rootName) {
-            this.move.rootName = rootName;
+    View.prototype.renderMoveRoots = function () {
+        var analysis = this.move.analysis;
+        var compatible = (analysis && analysis.CompatibleContentTypes) || [];
+        var html = '';
+        (this.roots || []).forEach(function (r) {
+            var label = r.Name + (r.ContentTypeLabel ? ' (' + r.ContentTypeLabel + ')' : '');
+            if (analysis && r.Id === analysis.SuggestedRootId) {
+                label += ' — conseillé';
+            } else if (r.ContentType && compatible.length && compatible.indexOf(r.ContentType) < 0) {
+                label += ' — type différent';
+            }
+            if (!r.Available) {
+                label += ' — introuvable';
+            }
+            html += '<option value="' + escapeHtml(r.Id) + '">' + escapeHtml(label) + '</option>';
+        });
+        this.view.querySelector('.torry-move-root').innerHTML = html;
+    };
+
+    View.prototype.renderMoveHint = function () {
+        var analysis = this.move.analysis;
+        var root = (this.roots || []).filter(function (r) { return r.Id === this.move.root; }, this)[0];
+        var hint = '';
+        if (root && analysis && root.ContentType && analysis.CompatibleContentTypes && analysis.CompatibleContentTypes.length
+            && analysis.CompatibleContentTypes.indexOf(root.ContentType) < 0) {
+            hint = 'Attention : « ' + root.Name + ' » est une bibliothèque ' + (root.ContentTypeLabel || '') + ' ; Emby risque de ne pas afficher ce contenu.';
+        } else if (root && root.Id === 'complete') {
+            hint = 'Dossier des téléchargements terminés de Torry.';
         }
+        this.view.querySelector('.torry-move-hint').textContent = hint;
+    };
+
+    View.prototype.updateMoveTarget = function () {
         var name = this.view.querySelector('.torry-move-name').value.trim();
-        var parts = [this.move.rootName || ''].concat(this.move.path ? this.move.path.split('/') : []).concat([name]);
-        this.view.querySelector('.torry-move-target').textContent = 'Vers : ' + parts.join(' › ');
-        this.view.querySelector('.torry-move-ok').disabled = !name;
+        var folders = [this.move.rootName || ''].concat(this.move.path ? this.move.path.split('/') : []);
+        var result = this.view.querySelector('.torry-move-result');
+        result.innerHTML = 'Sera déplacé dans : <strong>' + escapeHtml(folders.join(' › ')) + '</strong>'
+            + (name ? '<span class="torry-fs-meta">sous le nom « ' + escapeHtml(name) + ' »</span>' : '');
+        var ok = this.view.querySelector('.torry-move-ok');
+        ok.disabled = !name;
+        ok.textContent = 'Déplacer dans « ' + folders[folders.length - 1] + ' »';
     };
 
     View.prototype.confirmMove = function () {

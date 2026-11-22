@@ -109,6 +109,19 @@ Note : cette empreinte est celle de la version vérifiée ce jour-là. La DLL pu
 (licence MIT, indicateur d'écoute du port), son empreinte a donc changé. `./build.sh` affiche celle de la
 version courante.
 
+## 5 quinquies. Fenêtre de déplacement repensée (version 0.3.1)
+
+- Analyse du contenu (`GET /Torry/Files/Analyze`), dans `lscr.io/linuxserver/emby:4.10.2` : un album FLAC
+  (2 `.flac` et un `.jpg`) donne « audio », type « Musique » et la destination conseillée `musique`. La liste
+  interne des fichiers n'est pas exposée.
+- Interface : résumé « Dossier · 3 fichier(s) dont 2 audio, 1 image · type détecté : Musique »,
+  « Musique — conseillé » présélectionné, « Sera déplacé dans : Musique », bouton « Déplacer dans
+  « Musique » », puis déplacement effectué.
+- Correction d'affichage : le menu latéral d'Emby (z-index 1099) passait au-dessus des fenêtres de Torry,
+  désormais en z-index 1200.
+- Tests : album → Musique, dossier « Saison 1 » → Séries, fichier seul → Films ; analyse dans le test
+  d'essaim (89 tests au total).
+
 ## 5 quater. Destinations et explorateur de fichiers (version 0.3.0)
 
 **Tests automatisés** (88 au total, tous réussis) :

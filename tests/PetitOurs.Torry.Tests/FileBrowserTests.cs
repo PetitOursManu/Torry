@@ -168,6 +168,34 @@ namespace PetitOurs.Torry.Tests
         }
 
         [Fact]
+        public void Analyze_detects_album_series_and_single_file()
+        {
+            var album = Path.Combine(_complete.Path, "Bon.Jovi.Cross.Road.1994.CD-RIP.FLAC.[16bits.44.1kHz]-NOTAG");
+            TestSupport.WriteRandomFile(Path.Combine(album, "01 - Livin' on a Prayer.flac"), 3000, 3);
+            TestSupport.WriteRandomFile(Path.Combine(album, "02 - Keep the Faith.flac"), 3000, 4);
+            TestSupport.WriteRandomFile(Path.Combine(album, "cover.jpg"), 200, 5);
+            TestSupport.WriteRandomFile(Path.Combine(album, "info.nfo"), 50, 6);
+            var music = FileBrowser.Analyze(_complete, Path.GetFileName(album));
+            Assert.True(music.IsDirectory);
+            Assert.Equal(4, music.FileCount);
+            Assert.Equal(2, music.Categories["audio"]);
+            Assert.Equal("audio", music.DominantCategory);
+            Assert.Equal(MediaTypes.Music, music.SuggestedContentType);
+            Assert.Contains(MediaTypes.Music, music.CompatibleContentTypes);
+            Assert.DoesNotContain(MediaTypes.Movies, music.CompatibleContentTypes);
+
+            var show = Path.Combine(_complete.Path, "Ma Serie");
+            TestSupport.WriteRandomFile(Path.Combine(show, "Saison 1", "Ma Serie - 01.mkv"), 4000, 7);
+            TestSupport.WriteRandomFile(Path.Combine(show, "Saison 1", "Ma Serie - 02.mkv"), 4000, 8);
+            Assert.Equal(MediaTypes.TvShows, FileBrowser.Analyze(_complete, "Ma Serie").SuggestedContentType);
+
+            var single = FileBrowser.Analyze(_complete, "Mon Film (2024)/Mon Film.mkv");
+            Assert.False(single.IsDirectory);
+            Assert.Equal(MediaTypes.Movies, single.SuggestedContentType);
+            Assert.Throws<FileOperationException>(() => FileBrowser.Analyze(_complete, "absent"));
+        }
+
+        [Fact]
         public void Create_folder_validates_names()
         {
             Assert.Equal("Mon Film (2024)/Sous-titres", FileBrowser.CreateFolder(_complete, "Mon Film (2024)", "Sous-titres"));

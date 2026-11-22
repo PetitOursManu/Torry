@@ -219,6 +219,41 @@ namespace PetitOurs.Torry.Core
         public DateTime? FinishedUtc { get; set; }
     }
 
+    /// <summary>Analyse d'un fichier ou d'un dossier avant déplacement : type de contenu et destination conseillée.</summary>
+    public sealed class ItemAnalysisView
+    {
+        public string Name { get; set; }
+
+        public bool IsDirectory { get; set; }
+
+        public int FileCount { get; set; }
+
+        public long TotalBytes { get; set; }
+
+        /// <summary>Nombre de fichiers par catégorie (video, audio, image, book…).</summary>
+        public Dictionary<string, int> Categories { get; set; } = new Dictionary<string, int>();
+
+        /// <summary>Catégorie dominante (en taille) : video, audio, image, book, other.</summary>
+        public string DominantCategory { get; set; }
+
+        /// <summary>Type de bibliothèque Emby probable (movies, tvshows, music…), null si inconnu.</summary>
+        public string SuggestedContentType { get; set; }
+
+        public string SuggestedContentTypeLabel { get; set; }
+
+        /// <summary>Types de bibliothèque capables d'afficher ce contenu.</summary>
+        public List<string> CompatibleContentTypes { get; set; } = new List<string>();
+
+        /// <summary>Racine conseillée (identifiant), null si aucune destination ne convient.</summary>
+        public string SuggestedRootId { get; set; }
+
+        /// <summary>Vrai si l'analyse s'est arrêtée avant la fin (dossier très volumineux).</summary>
+        public bool Truncated { get; set; }
+
+        /// <summary>Fichiers analysés (chemin, taille) : usage interne, jamais sérialisé.</summary>
+        internal List<KeyValuePair<string, long>> Files { get; set; }
+    }
+
     public sealed class LibraryInfo
     {
         public string Name { get; set; }

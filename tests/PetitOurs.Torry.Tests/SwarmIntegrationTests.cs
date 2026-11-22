@@ -325,6 +325,11 @@ namespace PetitOurs.Torry.Tests
             Assert.Equal(TestSupport.Sha256(Source("Mon Film (2024).mkv")), TestSupport.Sha256(Path.Combine(archives, "Mon Film (2024)", "Mon Film (2024).mkv")));
             Assert.Contains(_notifier.RefreshedNow, p => p.EndsWith("Mon Film (2024)", StringComparison.Ordinal));
 
+            // Analyse avant déplacement : vidéos → Films conseillé.
+            var analysis = service.Analyze("archives", "Mon Film (2024)");
+            Assert.Equal(MediaTypes.Movies, analysis.SuggestedContentType);
+            Assert.Equal("films", analysis.SuggestedRootId);
+
             // Navigation dans la destination.
             var listing = service.List("archives", "Mon Film (2024)");
             Assert.Contains(listing.Entries, e => e.Name == "Extras" && e.IsDirectory);

@@ -283,6 +283,90 @@ namespace PetitOurs.Torry.Files
             return target;
         }
 
+        public const int MaxAnalyzedFiles = 5000;
+
+        /// <summary>
+        /// Analyse un fichier ou un dossier (récursivement, liens ignorés, 5000 fichiers au plus) pour en déduire
+        /// le type de contenu Emby : un album FLAC → Musique, des épisodes SxxEyy → Séries, etc.
+        /// </summary>
+        public static ItemAnalysisView Analyze(BrowseRoot root, string relative)
+        {
+            var full = Resolve(root, relative);
+            var isDirectory = Directory.Exists(full);
+            if (!isDirectory && !File.Exists(full))
+            {
+                throw new FileOperationException("Élément introuvable.");
+            }
+
+            var view = new ItemAnalysisView { Name = Path.GetFileName(full), IsDirectory = isDirectory };
+            var files = new List<KeyValuePair<string, long>>();
+            if (!isDirectory)
+            {
+                files.Add(new KeyValuePair<string, long>(view.Name, new FileInfo(full).Length));
+            }
+            else
+            {
+                var stack = new Stack<DirectoryInfo>();
+                stack.Push(new DirectoryInfo(full));
+                while (stack.Count > 0 && !view.Truncated)
+                {
+                    IEnumerable<FileSystemInfo> entries;
+                    var dir = stack.Pop();
+                    try
+                    {
+                        entries = dir.EnumerateFileSystemInfos().ToList();
+                    }
+                    catch (Exception ex) when (ex is UnauthorizedAccessException || ex is IOException)
+                    {
+                        continue;
+                    }
+
+                    foreach (var entry in entries)
+                    {
+                        if (entry.LinkTarget != null)
+                        {
+                            continue;
+                        }
+
+                        if (entry is DirectoryInfo sub)
+                        {
+                            stack.Push(sub);
+                            continue;
+                        }
+
+                        // Chemin relatif à l'élément analysé : « Saison 1/S01E01.mkv » aide à reconnaître une série.
+                        var rel = entry.FullName.Substring(full.Length).TrimStart(Separators);
+                        files.Add(new KeyValuePair<string, long>(view.Name + "/" + rel, ((FileInfo)entry).Length));
+                        if (files.Count >= MaxAnalyzedFiles)
+                        {
+                            view.Truncated = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            view.FileCount = files.Count;
+            view.TotalBytes = files.Sum(f => f.Value);
+            foreach (var group in files.GroupBy(f => MediaTypes.GetCategory(f.Key)))
+            {
+                view.Categories[group.Key.ToString().ToLowerInvariant()] = group.Count();
+            }
+
+            var dominant = files
+                .GroupBy(f => MediaTypes.GetCategory(f.Key))
+                .Where(g => g.Key != FileCategory.Other && g.Key != FileCategory.Subtitle)
+                .OrderByDescending(g => g.Sum(f => Math.Max(1, f.Value)))
+                .Select(g => (FileCategory?)g.Key)
+                .FirstOrDefault() ?? FileCategory.Other;
+            view.DominantCategory = dominant.ToString().ToLowerInvariant();
+            view.SuggestedContentType = MediaTypes.SuggestContentType(files);
+            view.SuggestedContentTypeLabel = view.SuggestedContentType == null ? null : MediaTypes.Label(view.SuggestedContentType);
+            view.CompatibleContentTypes = MediaTypes.CompatibleContentTypes(dominant).ToList();
+            view.Files = files;
+            return view;
+        }
+
         /// <summary>Taille totale (octets) d'un fichier ou d'un dossier, sans suivre les liens.</summary>
         public static long MeasureSize(string path)
         {

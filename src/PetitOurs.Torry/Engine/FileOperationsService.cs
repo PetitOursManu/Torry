@@ -34,6 +34,16 @@ namespace PetitOurs.Torry.Engine
 
         public DirectoryListingView List(string rootId, string path) => FileBrowser.List(_manager.FindRoot(rootId), path);
 
+        /// <summary>Type de contenu d'un élément et destination conseillée (pour la fenêtre de déplacement).</summary>
+        public ItemAnalysisView Analyze(string rootId, string path)
+        {
+            var view = FileBrowser.Analyze(_manager.FindRoot(rootId), path);
+            var suggested = MediaTypes.SuggestDestination(_manager.Options.Destinations, view.Files);
+            view.SuggestedRootId = suggested?.Id;
+            view.Files = null;
+            return view;
+        }
+
         public string CreateFolder(string rootId, string parentPath, string name)
         {
             var root = _manager.FindRoot(rootId);

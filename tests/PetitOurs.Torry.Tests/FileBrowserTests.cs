@@ -196,6 +196,44 @@ namespace PetitOurs.Torry.Tests
         }
 
         [Fact]
+        public void Delete_file_and_folder_but_never_a_root()
+        {
+            Assert.Throws<FileOperationException>(() => FileBrowser.PlanDelete(_complete, ""));
+            Assert.Throws<FileOperationException>(() => FileBrowser.PlanDelete(_complete, "absent"));
+            Assert.ThrowsAny<Exception>(() => FileBrowser.PlanDelete(_complete, ".."));
+
+            var file = FileBrowser.PlanDelete(_complete, "Mon Film (2024)/Extras/bonus.mkv");
+            Assert.Equal(1, FileBrowser.Delete(file));
+            Assert.False(File.Exists(file.Source));
+
+            var folder = FileBrowser.PlanDelete(_complete, "Mon Film (2024)");
+            Assert.True(folder.IsDirectory);
+            Assert.Equal(1, FileBrowser.Delete(folder));
+            Assert.False(Directory.Exists(folder.Source));
+            Assert.True(Directory.Exists(_complete.Path), "la racine reste");
+        }
+
+        [Fact]
+        public void Delete_never_follows_symlinks()
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                return;
+            }
+
+            var outside = Path.Combine(_dir, "precieux");
+            Directory.CreateDirectory(outside);
+            File.WriteAllText(Path.Combine(outside, "garder.txt"), "x");
+            Directory.CreateSymbolicLink(Path.Combine(_complete.Path, "Mon Film (2024)", "lien"), outside);
+
+            FileBrowser.Delete(FileBrowser.PlanDelete(_complete, "Mon Film (2024)"));
+            Assert.True(File.Exists(Path.Combine(outside, "garder.txt")), "la cible du lien est intacte");
+
+            Directory.CreateSymbolicLink(Path.Combine(_complete.Path, "lien2"), outside);
+            Assert.Throws<UnsafePathException>(() => FileBrowser.PlanDelete(_complete, "lien2/garder.txt"));
+        }
+
+        [Fact]
         public void Create_folder_validates_names()
         {
             Assert.Equal("Mon Film (2024)/Sous-titres", FileBrowser.CreateFolder(_complete, "Mon Film (2024)", "Sous-titres"));

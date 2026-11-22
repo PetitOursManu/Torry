@@ -109,6 +109,24 @@ Note : cette empreinte est celle de la version vérifiée ce jour-là. La DLL pu
 (licence MIT, indicateur d'écoute du port), son empreinte a donc changé. `./build.sh` affiche celle de la
 version courante.
 
+## 5 octies. Suppression depuis l'explorateur (version 0.3.5)
+
+**Tests automatisés** (93 au total) : suppression d'un fichier puis d'un dossier, refus sur une racine, un
+élément absent ou `..`. Un lien symbolique placé dans un dossier supprimé est retiré sans toucher sa cible, et
+un chemin qui traverse un lien est refusé. Essaim local : suppression du dossier d'une tâche en partage, qui
+arrête le partage (3 fichiers effacés) et détache les fichiers de la tâche. Une confirmation autre que
+« SUPPRIMER » est refusée.
+
+**Dans `lscr.io/linuxserver/emby:4.10.2`** :
+
+| Vérification | Résultat |
+|---|---|
+| `POST /Torry/Files/Delete` sans jeton / non administrateur | 401 / 403 |
+| Confirmation « oui » | 400 « Confirmation explicite requise : saisissez « SUPPRIMER ». » |
+| Racine / `../precieux.txt` | 400 « Impossible de supprimer un dossier racine. » / 400 « Chemin refusé (remontée de dossier (..)) » ; `precieux.txt` intact |
+| Interface, une ligne | Fenêtre « 1 fichier(s) · 293 Kio seront effacés », bouton désactivé tant que « SUPPRIMER » n'est pas saisi, puis « Supprimé (1 fichier(s)) » et liste actualisée |
+| Interface, sélection de 2 dossiers | « Supprimer 2 éléments définitivement · 2 fichier(s) · 585,9 Kio », 2 suppressions terminées, liste actualisée |
+
 ## 5 septies. Navigation et sélection multiple (versions 0.3.3 et 0.3.4)
 
 Dans `lscr.io/linuxserver/emby:4.10.2`, avec des albums imbriqués (`Anastacia…/CD1`, `CD2`…) et la

@@ -268,6 +268,50 @@ namespace PetitOurs.Torry.Files
             };
         }
 
+        /// <summary>Texte à saisir pour confirmer une suppression définitive.</summary>
+        public const string DeleteConfirmation = "SUPPRIMER";
+
+        /// <summary>Valide une suppression : jamais une racine, jamais à travers un lien symbolique.</summary>
+        public static MovePlan PlanDelete(BrowseRoot root, string relative)
+        {
+            var full = Resolve(root, relative);
+            if (string.Equals(full, PathGuard.NormalizeDirectory(root.Path), StringComparison.Ordinal))
+            {
+                throw new FileOperationException("Impossible de supprimer un dossier racine.");
+            }
+
+            var isDirectory = Directory.Exists(full);
+            if (!isDirectory && !File.Exists(full))
+            {
+                throw new FileOperationException("Élément introuvable.");
+            }
+
+            return new MovePlan
+            {
+                Source = full,
+                SourceRoot = root,
+                IsDirectory = isDirectory,
+                SourceDisplay = Display(root, full)
+            };
+        }
+
+        /// <summary>
+        /// Suppression définitive. Les liens symboliques rencontrés sont supprimés eux-mêmes, jamais leur cible.
+        /// Renvoie le nombre de fichiers supprimés.
+        /// </summary>
+        public static int Delete(MovePlan plan)
+        {
+            if (!plan.IsDirectory)
+            {
+                File.Delete(plan.Source);
+                return 1;
+            }
+
+            var count = 0;
+            DeleteTree(plan.Source, ref count);
+            return count;
+        }
+
         /// <summary>Chemin final libre (« Nom (2) » en cas de collision ; rien n'est jamais écrasé).</summary>
         public static string ReserveTarget(MovePlan plan)
         {
@@ -514,16 +558,23 @@ namespace PetitOurs.Torry.Files
 
         private static void DeleteTree(string path)
         {
+            var ignored = 0;
+            DeleteTree(path, ref ignored);
+        }
+
+        private static void DeleteTree(string path, ref int count)
+        {
             var info = new DirectoryInfo(path);
             foreach (var entry in info.EnumerateFileSystemInfos())
             {
                 if (entry is DirectoryInfo sub && sub.LinkTarget == null)
                 {
-                    DeleteTree(sub.FullName);
+                    DeleteTree(sub.FullName, ref count);
                 }
                 else
                 {
-                    entry.Delete();
+                    entry.Delete(); // fichier, ou lien symbolique (le lien seul, pas sa cible)
+                    count++;
                 }
             }
 

@@ -49,7 +49,7 @@ Exemple complet : [`deploy/docker-compose.yml`](../deploy/docker-compose.yml) et
 4. Redémarrez Emby.
 5. Vérifiez le journal (`/config/logs/embyserver.txt`) :
    ```
-   Info App: Loading PetitOurs.Torry, Version=0.3.4.0 ...
+   Info App: Loading PetitOurs.Torry, Version=0.3.5.0 ...
    Info Torry: Torry démarré : 0 tâche(s), port BitTorrent 6881.
    ```
 

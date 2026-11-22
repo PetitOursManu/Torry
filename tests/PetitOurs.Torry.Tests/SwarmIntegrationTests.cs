@@ -342,6 +342,34 @@ namespace PetitOurs.Torry.Tests
         }
 
         [Fact]
+        public async Task Deleting_a_seeding_folder_from_the_explorer_stops_seeding_and_detaches_files()
+        {
+            var options = Options(seed: true);
+            var manager = NewManager(options);
+            await manager.StartAsync();
+            var service = new FileOperationsService(manager, _notifier, _log);
+            var task = await manager.AddTorrentFileAsync(_torrentBytes);
+            await manager.StartWithSelectionAsync(task.Id, new[] { 0, 1, 2 });
+            await ConnectToSeederAsync(manager, task.Id);
+            await TestSupport.WaitUntilAsync(() => View(manager, task.Id).State == "Seeding", Timeout, "partage");
+
+            Assert.Throws<FileOperationException>(() => service.StartDelete("complete", "Mon Film (2024)", "oui"));
+            Assert.Throws<FileOperationException>(() => service.StartDelete("complete", "", "SUPPRIMER"));
+
+            var op = service.StartDelete("complete", "Mon Film (2024)", "SUPPRIMER");
+            Assert.Equal("delete", op.Kind);
+            await TestSupport.WaitUntilAsync(() => service.GetOperations().Single(o => o.Id == op.Id).State is "Done" or "Error", Timeout, "suppression");
+            var done = service.GetOperations().Single(o => o.Id == op.Id);
+            Assert.True(done.State == "Done", done.Message);
+            Assert.Contains("3 fichier(s)", done.Message);
+            Assert.Contains("Partage arrêté", done.Message);
+            Assert.False(Directory.Exists(Path.Combine(_completed, "Mon Film (2024)")));
+            Assert.Equal("Completed", View(manager, task.Id).State);
+            Assert.Null(View(manager, task.Id).FinalFolder);
+            await manager.StopAsync();
+        }
+
+        [Fact]
         public async Task Prepare_libraries_creates_writable_folders_and_attaches_them()
         {
             var options = Options(seed: false);

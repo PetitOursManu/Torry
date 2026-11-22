@@ -395,6 +395,8 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
                     instance.openMove([path]);
                 } else if (action === 'rename') {
                     instance.renameEntry(path);
+                } else if (action === 'delete') {
+                    instance.openDeleteFiles([path]);
                 }
                 return;
             }
@@ -420,6 +422,18 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
                 instance.openMove(paths);
             }
         });
+        view.querySelector('.torry-fs-delete-sel').addEventListener('click', function () {
+            var paths = Object.keys(instance.fs.selected || {});
+            if (paths.length) {
+                instance.openDeleteFiles(paths);
+            }
+        });
+        var fsDelModal = view.querySelector('.torry-fsdel-modal');
+        view.querySelector('.torry-fsdel-cancel').addEventListener('click', function () { fsDelModal.hidden = true; });
+        view.querySelector('.torry-fsdel-confirm').addEventListener('input', function (e) {
+            view.querySelector('.torry-fsdel-ok').disabled = e.target.value.trim().toUpperCase() !== 'SUPPRIMER';
+        });
+        view.querySelector('.torry-fsdel-ok').addEventListener('click', function () { instance.confirmDeleteFiles(); });
         view.querySelector('.torry-fs-up').addEventListener('click', function () {
             if (instance.fs.path) {
                 instance.browse(instance.fs.root, parentPath(instance.fs.path));
@@ -484,6 +498,7 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
                 filesModal.hidden = true;
                 deleteModal.hidden = true;
                 moveModal.hidden = true;
+                fsDelModal.hidden = true;
                 if (!promptModal.hidden) {
                     instance.closePrompt(null);
                 }
@@ -921,6 +936,7 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
                 + '<div class="torry-fs-meta">' + escapeHtml(meta) + '</div>'
                 + '<button type="button" class="torry-btn torry-btn-small" data-fs="move" data-path="' + escapeHtml(e.Path) + '">Déplacer…</button>'
                 + '<button type="button" class="torry-btn torry-btn-small" data-fs="rename" data-path="' + escapeHtml(e.Path) + '">Renommer…</button>'
+                + '<button type="button" class="torry-btn torry-btn-small" data-fs="delete" data-path="' + escapeHtml(e.Path) + '" title="Supprimer définitivement">Supprimer…</button>'
                 + '<i class="md-icon torry-fs-chevron">' + (e.IsDirectory ? 'chevron_right' : '') + '</i>'
                 + '</div>';
         });
@@ -932,6 +948,64 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         }
         this.view.querySelector('.torry-fs-list').innerHTML = html;
         this.updateSelectionUi();
+    };
+
+    View.prototype.openDeleteFiles = function (paths) {
+        var instance = this;
+        paths = (paths || []).slice();
+        var entries = paths.map(function (p) {
+            return instance.findEntry(p) || { Name: p.split('/').pop(), Path: p, IsDirectory: false };
+        });
+        this.fsDelete = { root: this.fs.root, paths: paths };
+        this.view.querySelector('.torry-fsdel-title').textContent = paths.length === 1
+            ? 'Supprimer « ' + entries[0].Name + ' » définitivement'
+            : 'Supprimer ' + paths.length + ' éléments définitivement';
+        this.view.querySelector('.torry-fsdel-items').innerHTML = entries.map(function (e) {
+            return '<div>• ' + escapeHtml(e.Name) + (e.IsDirectory ? ' <span class="torry-fs-meta">(dossier et tout son contenu)</span>' : '') + '</div>';
+        }).join('');
+        this.view.querySelector('.torry-fsdel-summary').textContent = 'Calcul de la taille…';
+        var input = this.view.querySelector('.torry-fsdel-confirm');
+        input.value = '';
+        this.view.querySelector('.torry-fsdel-ok').disabled = true;
+        this.view.querySelector('.torry-fsdel-modal').hidden = false;
+        setTimeout(function () { input.focus(); }, 50);
+        Promise.all(paths.slice(0, 30).map(function (p) {
+            return api('GET', 'Torry/Files/Analyze?Root=' + encodeURIComponent(instance.fs.root) + '&Path=' + encodeURIComponent(p))
+                .then(function (a) { return a; }, function () { return null; });
+        })).then(function (results) {
+            var list = results.filter(function (a) { return !!a; });
+            var files = list.reduce(function (n, a) { return n + (a.FileCount || 0); }, 0);
+            var bytes = list.reduce(function (n, a) { return n + (a.TotalBytes || 0); }, 0);
+            instance.view.querySelector('.torry-fsdel-summary').textContent = files + ' fichier(s) · ' + formatBytes(bytes) + ' seront effacés.';
+        });
+    };
+
+    View.prototype.confirmDeleteFiles = function () {
+        var instance = this;
+        var d = this.fsDelete;
+        var confirmation = this.view.querySelector('.torry-fsdel-confirm').value.trim().toUpperCase();
+        if (!d || confirmation !== 'SUPPRIMER') {
+            return;
+        }
+        this.view.querySelector('.torry-fsdel-modal').hidden = true;
+        loading.show();
+        var errors = [];
+        var chain = Promise.resolve();
+        d.paths.forEach(function (p) {
+            chain = chain.then(function () {
+                return api('POST', 'Torry/Files/Delete', { Root: d.root, Path: p, Confirmation: confirmation })
+                    .then(null, function (err) {
+                        return readError(err).then(function (msg) { errors.push(p.split('/').pop() + ' : ' + msg); });
+                    });
+            });
+        });
+        chain.then(function () {
+            loading.hide();
+            var launched = d.paths.length - errors.length;
+            instance.notifyFiles(launched + ' suppression(s) lancée(s).' + (errors.length ? ' Refusées : ' + errors.join(' ; ') : ''), errors.length > 0);
+            instance.selectAll(false);
+            instance.refreshOperations();
+        });
     };
 
     View.prototype.toggleSelection = function (path, on) {
@@ -971,6 +1045,9 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         move.disabled = count === 0;
         move.textContent = count > 1 ? 'Déplacer les ' + count + ' éléments…' : 'Déplacer la sélection…';
         this.view.querySelector('.torry-fs-clear-sel').disabled = count === 0;
+        var del = this.view.querySelector('.torry-fs-delete-sel');
+        del.disabled = count === 0;
+        del.textContent = count > 1 ? 'Supprimer (' + count + ')…' : 'Supprimer…';
     };
 
     View.prototype.findEntry = function (path) {
@@ -1227,10 +1304,10 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             instance.lastOps = ops;
             var html = ops.map(function (o) {
                 var pct = o.BytesTotal > 0 ? Math.min(100, 100 * o.BytesDone / o.BytesTotal) : (o.State === 'Done' ? 100 : 0);
-                var label = { Pending: 'En attente', Running: o.Copying ? 'Copie en cours' : 'En cours', Done: 'Terminé', Error: 'Erreur' }[o.State] || o.State;
+                var label = { Pending: 'En attente', Running: o.Copying ? 'Copie en cours' : 'En cours', Done: o.Kind === 'delete' ? 'Supprimé' : 'Terminé', Error: 'Erreur' }[o.State] || o.State;
                 return '<div class="torry-task"><div class="torry-task-head"><div class="torry-task-name">' + escapeHtml(o.Source) + '</div>'
                     + '<span class="' + (o.State === 'Error' ? 'torry-badge torry-badge-err' : (o.State === 'Done' ? 'torry-badge torry-badge-ok' : 'torry-badge')) + '">' + escapeHtml(label) + '</span></div>'
-                    + '<div class="torry-note">→ ' + escapeHtml(o.Target) + '</div>'
+                    + (o.Kind === 'delete' ? '<div class="torry-note">Suppression définitive</div>' : '<div class="torry-note">→ ' + escapeHtml(o.Target) + '</div>')
                     + (o.State === 'Running' ? '<div class="torry-bar"><div style="width:' + pct.toFixed(1) + '%"></div></div><div class="torry-meta"><span>'
                         + escapeHtml(formatBytes(o.BytesDone) + ' / ' + formatBytes(o.BytesTotal)) + '</span></div>' : '')
                     + (o.Message ? '<div class="' + (o.State === 'Error' ? 'torry-error' : 'torry-note') + '">' + escapeHtml(o.Message) + '</div>' : '')

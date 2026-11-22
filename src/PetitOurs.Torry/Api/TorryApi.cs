@@ -143,6 +143,18 @@ namespace PetitOurs.Torry.Api
         public string NewName { get; set; }
     }
 
+    [Route("/Torry/Files/Delete", "POST", Summary = "Supprime définitivement un fichier ou un dossier (confirmation « SUPPRIMER » obligatoire)")]
+    [Authenticated(Roles = "admin")]
+    public class DeleteTorryFile : IReturn<MoveOperationView>
+    {
+        public string Root { get; set; }
+
+        public string Path { get; set; }
+
+        /// <summary>Doit valoir « SUPPRIMER ».</summary>
+        public string Confirmation { get; set; }
+    }
+
     [Route("/Torry/Files/Folder", "POST", Summary = "Crée un dossier")]
     [Authenticated(Roles = "admin")]
     public class CreateTorryFolder : IReturn<FileEntryView>
@@ -311,6 +323,8 @@ namespace PetitOurs.Torry.Api
 
         public object Post(MoveTorryFile request) =>
             Guard(() => Files().StartMove(request.SourceRoot, request.SourcePath, request.TargetRoot, request.TargetPath, request.NewName));
+
+        public object Post(DeleteTorryFile request) => Guard(() => Files().StartDelete(request.Root, request.Path, request.Confirmation));
 
         public object Post(CreateTorryFolder request) =>
             Guard(() => new FileEntryView { Name = request.Name, IsDirectory = true, Category = "folder", Path = Files().CreateFolder(request.Root, request.Path, request.Name) });

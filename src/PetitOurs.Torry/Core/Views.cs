@@ -198,6 +198,9 @@ namespace PetitOurs.Torry.Core
     {
         public string Id { get; set; }
 
+        /// <summary>« move » (déplacement ou renommage) ou « delete » (suppression définitive).</summary>
+        public string Kind { get; set; } = "move";
+
         /// <summary>Pending, Running, Done, Error.</summary>
         public string State { get; set; }
 

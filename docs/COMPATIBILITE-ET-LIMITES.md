@@ -96,8 +96,9 @@ serveur Emby, pas l'application.
   non pris en charge (collections, listes de lecture, TV en direct) sont ignorés. Les destinations dans
   lesquelles Torry ne peut pas écrire, et qui ne correspondent à aucune bibliothèque, sont retirées.
   L'emplacement ajouté à une bibliothèque ne s'enlève que depuis Emby.
-- **Explorateur de fichiers** : il permet de déplacer, renommer et créer des dossiers, mais **pas de supprimer**
-  (la suppression passe par « Supprimer… » sur une tâche). Les liens symboliques sont masqués et jamais suivis :
+- **Explorateur de fichiers** : déplacer, renommer, créer des dossiers et supprimer. La suppression est
+  **définitive** (pas de corbeille). Si elle échoue en cours de route (droits, disque), une partie des fichiers
+  peut déjà avoir été effacée, et le message le précise. Les liens symboliques sont masqués et jamais suivis :
   un déplacement entre volumes ne recopie pas les liens qu'un dossier contient. La liste d'un dossier est
   limitée à 2000 éléments.
 - **Déplacements entre volumes** : copie suivie d'une suppression, exécutée en arrière-plan et un déplacement à

@@ -94,8 +94,13 @@ directement dans `<destination>/<Nom du torrent>/` : il n'y a pas d'étape inter
 - la bibliothèque d'origine et celle d'arrivée sont actualisées tout de suite ;
 - un fichier encore **en partage** peut être déplacé : son partage est alors arrêté, et la tâche suit le dossier
   déplacé (la suppression avec fichiers reste possible) ;
-- l'explorateur ne supprime pas de fichiers, ne suit pas les liens symboliques et refuse tout chemin hors des
-  racines (`..`, chemins absolus).
+- **suppression définitive** d'un ou plusieurs fichiers ou dossiers (« Supprimer… » sur une ligne, ou
+  « Supprimer (N)… » pour la sélection). La fenêtre indique le nombre de fichiers et la taille effacés et exige
+  la saisie de « SUPPRIMER » ; le serveur vérifie aussi cette confirmation. Le partage des torrents concernés
+  est arrêté, et la bibliothèque Emby est actualisée ;
+- l'explorateur ne suit jamais les liens symboliques (lors d'une suppression, seul le lien est supprimé, pas
+  sa cible), ne supprime jamais un dossier racine et refuse tout chemin hors des racines (`..`, chemins
+  absolus).
 
 > Pour des déplacements instantanés, les dossiers doivent être sur **le même montage Docker**. Par exemple,
 > montez un seul dossier hôte `/srv/media` sur `/media`, avec `/media/downloads/incomplete`,
@@ -219,7 +224,7 @@ docker exec "$CONTAINER" grep -i "torry" /config/logs/embyserver.txt | tail -3
 Vous devez voir :
 
 ```
-Info App: Loading PetitOurs.Torry, Version=0.3.4.0 ... from /config/plugins/PetitOurs.Torry.dll
+Info App: Loading PetitOurs.Torry, Version=0.3.5.0 ... from /config/plugins/PetitOurs.Torry.dll
 Info Torry: Torry démarré : 0 tâche(s), port BitTorrent 6881.
 ```
 

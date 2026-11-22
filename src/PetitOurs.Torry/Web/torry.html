@@ -151,6 +151,7 @@
                     <span class="torry-fs-selcount"></span>
                     <button type="button" class="torry-btn torry-btn-small torry-fs-clear-sel" style="margin-left:auto;" disabled>Désélectionner</button>
                     <button type="button" class="torry-btn torry-btn-primary torry-btn-small torry-fs-move-sel" disabled>Déplacer la sélection…</button>
+                    <button type="button" class="torry-btn torry-btn-danger torry-btn-small torry-fs-delete-sel" disabled>Supprimer…</button>
                 </div>
                 <div class="torry-fs torry-fs-list"></div>
                 <div class="torry-help" style="font-size:.85em;opacity:.7;margin-top:.6em;">Seuls le dossier des téléchargements terminés et les dossiers de destination (onglet Réglages) sont accessibles. Les fichiers en cours de partage peuvent être déplacés : leur partage est alors arrêté.</div>
@@ -306,6 +307,24 @@
                     <div class="torry-row">
                         <button type="button" class="torry-btn torry-move-cancel">Annuler</button>
                         <button type="button" class="torry-btn torry-btn-primary torry-move-ok">Déplacer</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fenêtre : suppression de fichiers -->
+        <div class="torry-modal torry-fsdel-modal" hidden>
+            <div class="torry-dialog" role="dialog" aria-modal="true" aria-labelledby="torryFsDelTitle" style="max-width:36em;">
+                <h2 id="torryFsDelTitle" class="torry-fsdel-title">Supprimer définitivement</h2>
+                <div class="torry-move-summary torry-fsdel-summary"></div>
+                <div class="torry-move-items torry-fsdel-items"></div>
+                <div class="torry-error">Action irréversible : les fichiers seront effacés du disque et disparaîtront de la bibliothèque Emby. Le partage des torrents concernés sera arrêté.</div>
+                <label for="torryFsDelConfirm">Pour confirmer, saisissez <strong>SUPPRIMER</strong></label>
+                <input id="torryFsDelConfirm" class="torry-input torry-fsdel-confirm" type="text" autocomplete="off" spellcheck="false" />
+                <div class="torry-dialog-foot" style="justify-content:flex-end;margin-top:1em;">
+                    <div class="torry-row">
+                        <button type="button" class="torry-btn torry-fsdel-cancel">Annuler</button>
+                        <button type="button" class="torry-btn torry-btn-danger torry-fsdel-ok" disabled>Supprimer</button>
                     </div>
                 </div>
             </div>

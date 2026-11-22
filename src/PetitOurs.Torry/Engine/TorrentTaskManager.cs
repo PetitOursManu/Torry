@@ -699,7 +699,7 @@ namespace PetitOurs.Torry.Engine
 
                     if (rt.Manager != null)
                     {
-                        await FinishSeedingAsync(rt, "Partage arrêté : fichiers déplacés depuis l'explorateur.").ConfigureAwait(false);
+                        await FinishSeedingAsync(rt, "Partage arrêté : fichiers modifiés depuis l'explorateur.").ConfigureAwait(false);
                         stopped.Add(r.Name);
                     }
                 }
@@ -741,6 +741,40 @@ namespace PetitOurs.Torry.Engine
                     {
                         var moved = Rebase(entry.FinalPath, source, target);
                         entry.FinalPath = !string.IsNullOrEmpty(r.FinalDirectory) && PathGuard.IsInside(r.FinalDirectory, moved) ? moved : null;
+                    }
+                }
+
+                SaveNow();
+                RebuildStatus();
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+
+        /// <summary>Après une suppression depuis l'explorateur : les fichiers supprimés ne sont plus gérés par leur tâche.</summary>
+        public async Task AfterDeleteAsync(string deleted)
+        {
+            await _gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                foreach (var rt in _tasks)
+                {
+                    var r = rt.Record;
+                    if (!TouchesTask(r, deleted))
+                    {
+                        continue;
+                    }
+
+                    foreach (var entry in r.Files.Where(f => !string.IsNullOrEmpty(f.FinalPath) && PathGuard.IsSameOrInside(deleted, f.FinalPath)))
+                    {
+                        entry.FinalPath = null;
+                    }
+
+                    if (!string.IsNullOrEmpty(r.FinalDirectory) && PathGuard.IsSameOrInside(deleted, r.FinalDirectory))
+                    {
+                        r.FinalDirectory = null;
                     }
                 }
 

@@ -92,6 +92,98 @@ namespace PetitOurs.Torry.Engine
             return Copy(op);
         }
 
+        /// <summary>
+        /// Met en file une suppression définitive. <paramref name="confirmation"/> doit valoir « SUPPRIMER »
+        /// (confirmation explicite, vérifiée côté serveur).
+        /// </summary>
+        public MoveOperationView StartDelete(string rootId, string path, string confirmation)
+        {
+            if (!string.Equals((confirmation ?? string.Empty).Trim(), FileBrowser.DeleteConfirmation, StringComparison.Ordinal))
+            {
+                throw new FileOperationException("Confirmation explicite requise : saisissez « " + FileBrowser.DeleteConfirmation + " ».");
+            }
+
+            var plan = FileBrowser.PlanDelete(_manager.FindRoot(rootId), path);
+            var op = new MoveOperationView
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Kind = "delete",
+                State = "Pending",
+                Source = plan.SourceDisplay,
+                Target = "Suppression définitive",
+                StartedUtc = DateTime.UtcNow
+            };
+
+            AddOperation(op);
+            _ = Task.Run(() => RunDeleteAsync(plan, op));
+            return Copy(op);
+        }
+
+        private async Task RunDeleteAsync(MovePlan plan, MoveOperationView op)
+        {
+            await _worker.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                Update(op, o => o.State = "Running");
+                var note = await _manager.BeforeMoveAsync(plan.Source).ConfigureAwait(false);
+                var count = await Task.Run(() => FileBrowser.Delete(plan)).ConfigureAwait(false);
+                await _manager.AfterDeleteAsync(plan.Source).ConfigureAwait(false);
+
+                var refreshed = false;
+                try
+                {
+                    refreshed = _library.RefreshNow(Path.GetDirectoryName(plan.Source))?.Refreshed == true;
+                }
+                catch (Exception ex)
+                {
+                    _log.Warn("Torry: actualisation après suppression : " + DiskErrors.SafeMessage(ex.Message));
+                }
+
+                var message = "Supprimé (" + count + " fichier(s))." + (refreshed ? " Bibliothèque actualisée." : string.Empty)
+                    + (note == null ? string.Empty : " " + note);
+                Update(op, o =>
+                {
+                    o.State = "Done";
+                    o.Message = message;
+                    o.FinishedUtc = DateTime.UtcNow;
+                });
+                _log.Info("Torry: supprimé depuis l'explorateur : " + op.Source + " (" + count + " fichier(s)).");
+            }
+            catch (Exception ex)
+            {
+                var message = ex is FileOperationException || ex is UnsafePathException ? ex.Message : DiskErrors.Describe(ex);
+                Update(op, o =>
+                {
+                    o.State = "Error";
+                    o.Message = message + " Une partie des fichiers a pu être supprimée.";
+                    o.FinishedUtc = DateTime.UtcNow;
+                });
+                _log.Warn("Torry: suppression impossible (" + op.Source + ") : " + message);
+            }
+            finally
+            {
+                _worker.Release();
+            }
+        }
+
+        private void AddOperation(MoveOperationView op)
+        {
+            lock (_opsLock)
+            {
+                _operations.Insert(0, op);
+                while (_operations.Count > KeepOperations)
+                {
+                    var last = _operations.FindLastIndex(o => o.State == "Done" || o.State == "Error");
+                    if (last < 0)
+                    {
+                        break;
+                    }
+
+                    _operations.RemoveAt(last);
+                }
+            }
+        }
+
         /// <summary>Exécution synchrone (tests).</summary>
         internal Task RunForTestsAsync(MovePlan plan, MoveOperationView op) => RunAsync(plan, op);
 
@@ -177,6 +269,7 @@ namespace PetitOurs.Torry.Engine
         private static MoveOperationView Copy(MoveOperationView op) => new MoveOperationView
         {
             Id = op.Id,
+            Kind = op.Kind,
             State = op.State,
             Source = op.Source,
             Target = op.Target,

@@ -44,6 +44,9 @@ namespace PetitOurs.Torry.Core
 
         public bool RefreshLibraryOnComplete { get; set; } = true;
 
+        /// <summary>Durée de conservation des éléments mis à la corbeille (jours). 0 = jamais vidée automatiquement.</summary>
+        public int TrashRetentionDays { get; set; } = 30;
+
         /// <summary>Dossiers de destination par type de contenu (bibliothèques Emby). Vide = tout va dans « terminés ».</summary>
         public List<DestinationFolder> Destinations { get; set; } = new List<DestinationFolder>();
 
@@ -95,6 +98,11 @@ namespace PetitOurs.Torry.Core
             if (SeedTimeLimitMinutes < 0 || SeedTimeLimitMinutes > 525600)
             {
                 errors.Add("La durée de partage doit être comprise entre 0 et 525 600 minutes (0 = sans limite).");
+            }
+
+            if (TrashRetentionDays < 0 || TrashRetentionDays > 3650)
+            {
+                errors.Add("La durée de conservation de la corbeille doit être comprise entre 0 et 3650 jours (0 = jamais vidée automatiquement).");
             }
 
             errors.AddRange(ValidateDestinations());

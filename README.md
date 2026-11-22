@@ -35,8 +35,9 @@ qBittorrent, ni Radarr ou Sonarr, ni service de débridage).
   dossier des téléchargements terminés. Sans lui, Emby attend environ 90 s (délai de surveillance par défaut).
 - **Dossiers de destination par type de contenu Emby** (Films, Séries, Musique, Livres…), importables en un clic
   depuis vos bibliothèques Emby. Au choix des fichiers, Torry propose la destination adaptée au contenu.
-- **Onglet « Fichiers »** : mini explorateur pour parcourir, déplacer, renommer et créer des dossiers dans les
-  téléchargements terminés et les destinations.
+- **Onglet « Fichiers »** : mini explorateur pour parcourir, déplacer, renommer, créer des dossiers et
+  supprimer (avec **corbeille** restaurable) dans les téléchargements terminés et les destinations, y compris
+  plusieurs éléments à la fois.
 
 ## Dossiers de destination et onglet « Fichiers »
 
@@ -94,10 +95,23 @@ directement dans `<destination>/<Nom du torrent>/` : il n'y a pas d'étape inter
 - la bibliothèque d'origine et celle d'arrivée sont actualisées tout de suite ;
 - un fichier encore **en partage** peut être déplacé : son partage est alors arrêté, et la tâche suit le dossier
   déplacé (la suppression avec fichiers reste possible) ;
-- **suppression définitive** d'un ou plusieurs fichiers ou dossiers (« Supprimer… » sur une ligne, ou
-  « Supprimer (N)… » pour la sélection). La fenêtre indique le nombre de fichiers et la taille effacés et exige
-  la saisie de « SUPPRIMER » ; le serveur vérifie aussi cette confirmation. Le partage des torrents concernés
-  est arrêté, et la bibliothèque Emby est actualisée ;
+- **supprimer** un ou plusieurs fichiers ou dossiers (« Supprimer… » sur une ligne, ou « Supprimer (N)… »
+  pour la sélection). La fenêtre indique le nombre de fichiers et la taille, et propose deux actions :
+  - **« Mettre à la corbeille »**, par défaut. L'élément disparaît de la bibliothèque Emby mais reste
+    restaurable. Pas de saisie à faire : c'est réversible ;
+  - **« Supprimer définitivement »** : effacement immédiat, qui exige la saisie de « SUPPRIMER » (le serveur
+    vérifie aussi cette confirmation).
+
+  Dans les deux cas, le partage des torrents concernés est arrêté et la bibliothèque Emby est actualisée ;
+- **corbeille** (bouton « Corbeille » de l'onglet Fichiers) : liste de tous les éléments supprimés, avec leur
+  emplacement d'origine, la date de suppression et la date d'effacement automatique. Chaque élément peut être
+  **restauré** à sa place d'origine (`Nom (2)` si le nom a été repris entre-temps), ou supprimé
+  définitivement ; « Vider la corbeille… » efface tout. Chaque dossier racine a sa propre corbeille cachée,
+  `.torry-corbeille/` : mise à la corbeille et restauration sont donc des renommages instantanés, sur le même
+  volume. Emby ignore ces dossiers sous Linux, car leur nom commence par un point (vérifié dans Emby
+  4.10.2, même après une analyse complète). La corbeille est vidée automatiquement après **30 jours**,
+  durée réglable dans **Réglages > Corbeille** (0 = jamais). Les éléments en corbeille occupent toujours
+  de la place sur le disque ;
 - l'explorateur ne suit jamais les liens symboliques (lors d'une suppression, seul le lien est supprimé, pas
   sa cible), ne supprime jamais un dossier racine et refuse tout chemin hors des racines (`..`, chemins
   absolus).
@@ -224,7 +238,7 @@ docker exec "$CONTAINER" grep -i "torry" /config/logs/embyserver.txt | tail -3
 Vous devez voir :
 
 ```
-Info App: Loading PetitOurs.Torry, Version=0.3.5.0 ... from /config/plugins/PetitOurs.Torry.dll
+Info App: Loading PetitOurs.Torry, Version=0.4.1.0 ... from /config/plugins/PetitOurs.Torry.dll
 Info Torry: Torry démarré : 0 tâche(s), port BitTorrent 6881.
 ```
 
@@ -284,7 +298,9 @@ torrent n'est actif ».
   2. Facultatif : `docker exec "$CONTAINER" rm -rf /config/data/torry /config/plugins/configurations/PetitOurs.Torry.xml`
   3. **Restart**, puis retirez le volume `/downloads` et les `ports` du compose si vous n'en voulez plus.
 
-  Les fichiers de `/srv/torry` ne sont jamais supprimés automatiquement.
+  Les fichiers de `/srv/torry` ne sont jamais supprimés automatiquement. Les éléments mis à la corbeille
+  restent dans les dossiers cachés `.torry-corbeille/` de chaque racine. Videz la corbeille avant de
+  désinstaller, ou supprimez ces dossiers à la main.
 
 ## Documentation
 

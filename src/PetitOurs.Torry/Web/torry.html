@@ -6,7 +6,7 @@
             .torryPage .torry-tabs { display: flex; gap: .5em; margin-bottom: 1.2em; flex-wrap: wrap; }
             .torryPage .torry-tab { border: 1px solid rgba(128,128,128,.4); background: transparent; color: inherit; padding: .5em 1.1em; border-radius: 2em; cursor: pointer; font: inherit; }
             .torryPage .torry-tab[aria-selected="true"] { background: #52b54b; border-color: #52b54b; color: #fff; }
-            .torryPage .torry-panel[hidden] { display: none; }
+            .torryPage .torry-panel[hidden], .torryPage [hidden] { display: none !important; }
             .torryPage .torry-box { border: 1px solid rgba(128,128,128,.3); border-radius: .5em; padding: 1em; margin-bottom: 1em; }
             .torryPage .torry-row { display: flex; gap: .6em; align-items: center; flex-wrap: wrap; }
             .torryPage .torry-grow { flex: 1 1 18em; min-width: 0; }
@@ -137,6 +137,7 @@
                     </div>
                     <div class="torry-row" style="align-self:flex-end;">
                         <button type="button" class="torry-btn torry-btn-small torry-fs-mkdir">Nouveau dossier</button>
+                        <button type="button" class="torry-btn torry-btn-small torry-fs-trash-open"><i class="md-icon" style="font-size:1.1em;vertical-align:middle;">delete</i> Corbeille</button>
                         <button type="button" class="torry-btn torry-btn-small torry-fs-reload">Actualiser</button>
                     </div>
                 </div>
@@ -154,6 +155,15 @@
                     <button type="button" class="torry-btn torry-btn-danger torry-btn-small torry-fs-delete-sel" disabled>Supprimer…</button>
                 </div>
                 <div class="torry-fs torry-fs-list"></div>
+                <div class="torry-trash-panel" hidden>
+                    <div class="torry-fs-toolbar" style="border-radius:.5em .5em 0 0;">
+                        <strong>Corbeille</strong>
+                        <span class="torry-fs-selcount torry-trash-summary"></span>
+                        <button type="button" class="torry-btn torry-btn-small torry-trash-back" style="margin-left:auto;">Retour aux fichiers</button>
+                        <button type="button" class="torry-btn torry-btn-danger torry-btn-small torry-trash-empty">Vider la corbeille…</button>
+                    </div>
+                    <div class="torry-fs torry-trash-list"></div>
+                </div>
                 <div class="torry-help" style="font-size:.85em;opacity:.7;margin-top:.6em;">Seuls le dossier des téléchargements terminés et les dossiers de destination (onglet Réglages) sont accessibles. Les fichiers en cours de partage peuvent être déplacés : leur partage est alors arrêté.</div>
                 <h3 style="margin:1.4em 0 .6em;font-size:1.05em;">Déplacements</h3>
                 <div class="torry-fs-ops"><div class="torry-empty" style="padding:.6em 0;">Aucun déplacement récent.</div></div>
@@ -243,6 +253,13 @@
                     <label class="torry-check"><input type="checkbox" name="RefreshLibraryOnComplete" /> Demander l'actualisation de la bibliothèque quand des fichiers sont disponibles</label>
                     <label class="torry-check"><input type="checkbox" name="AutoStartAfterMetadata" /> Démarrer automatiquement avec tous les fichiers (sans écran de sélection)</label>
 
+                    <h3>Corbeille</h3>
+                    <div class="torry-field" style="max-width:24em;">
+                        <label for="torryTrashDays">Vider automatiquement après (jours, 0 = jamais)</label>
+                        <input id="torryTrashDays" class="torry-input" name="TrashRetentionDays" type="number" min="0" max="3650" required />
+                        <div class="torry-help">Les éléments mis à la corbeille depuis l'onglet Fichiers restent sur le disque, invisibles pour Emby, jusqu'à cette échéance.</div>
+                    </div>
+
                     <div class="torry-settings-message"></div>
                     <button type="submit" class="torry-btn torry-btn-primary" style="margin-top:1em;">Enregistrer</button>
                 </form>
@@ -318,9 +335,19 @@
                 <h2 id="torryFsDelTitle" class="torry-fsdel-title">Supprimer définitivement</h2>
                 <div class="torry-move-summary torry-fsdel-summary"></div>
                 <div class="torry-move-items torry-fsdel-items"></div>
-                <div class="torry-error">Action irréversible : les fichiers seront effacés du disque et disparaîtront de la bibliothèque Emby. Le partage des torrents concernés sera arrêté.</div>
-                <label for="torryFsDelConfirm">Pour confirmer, saisissez <strong>SUPPRIMER</strong></label>
-                <input id="torryFsDelConfirm" class="torry-input torry-fsdel-confirm" type="text" autocomplete="off" spellcheck="false" />
+                <div class="torry-field" style="margin-top:.8em;">
+                    <label for="torryFsDelMode">Action</label>
+                    <select id="torryFsDelMode" class="torry-input torry-fsdel-mode">
+                        <option value="trash">Mettre à la corbeille (restaurable)</option>
+                        <option value="delete">Supprimer définitivement (irréversible)</option>
+                    </select>
+                </div>
+                <div class="torry-warn torry-fsdel-trashnote"></div>
+                <div class="torry-fsdel-definitive" hidden>
+                    <div class="torry-error">Action irréversible : les fichiers seront effacés du disque et disparaîtront de la bibliothèque Emby. Le partage des torrents concernés sera arrêté.</div>
+                    <label for="torryFsDelConfirm">Pour confirmer, saisissez <strong>SUPPRIMER</strong></label>
+                    <input id="torryFsDelConfirm" class="torry-input torry-fsdel-confirm" type="text" autocomplete="off" spellcheck="false" />
+                </div>
                 <div class="torry-dialog-foot" style="justify-content:flex-end;margin-top:1em;">
                     <div class="torry-row">
                         <button type="button" class="torry-btn torry-fsdel-cancel">Annuler</button>

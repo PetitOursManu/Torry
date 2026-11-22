@@ -109,6 +109,25 @@ Note : cette empreinte est celle de la version vérifiée ce jour-là. La DLL pu
 (licence MIT, indicateur d'écoute du port), son empreinte a donc changé. `./build.sh` affiche celle de la
 version courante.
 
+## 5 nonies. Corbeille (versions 0.4.0 et 0.4.1)
+
+- Code d'Emby 4.10.2 : `CoreResolutionIgnoreRule` ignore sous Linux tout nom commençant par « . », ce qui
+  justifie le dossier caché `.torry-corbeille/`.
+- Tests automatisés (94 au total) : mise à la corbeille, corbeille absente de la liste et inaccessible par
+  chemin, index (origine, nombre de fichiers, taille, échéance), restauration avec collision → `Album (2)`,
+  confirmation obligatoire pour l'effacement définitif, vidage automatique d'un élément expiré, refus de
+  « Vider » sans confirmation.
+- Dans `lscr.io/linuxserver/emby:4.10.2`, avec une bibliothèque Films :
+
+| Vérification | Résultat |
+|---|---|
+| Fenêtre « Supprimer » | Action « Mettre à la corbeille (restaurable) » par défaut, durée de 30 jours affichée, aucune saisie requise |
+| Mise à la corbeille d'un film de la bibliothèque | Dossier déplacé dans `/downloads/films/.torry-corbeille/<id>/` |
+| Analyse **complète** de la bibliothèque Emby ensuite | Seul le dossier racine « films » est indexé : le film en corbeille n'apparaît pas |
+| Vue Corbeille | « 1 élément(s) · 41,9 Kio · vidage automatique après 30 jour(s) », origine « Films › Film Corbeille (2020) », dates |
+| Restaurer | Fichier remis à sa place, film de nouveau visible dans Emby en 2 s |
+| Correction (0.4.1) | La barre de sélection restait visible au-dessus de la corbeille, car le CSS `display:flex` l'emportait sur `hidden` ; règle `[hidden] { display:none !important }` ajoutée |
+
 ## 5 octies. Suppression depuis l'explorateur (version 0.3.5)
 
 **Tests automatisés** (93 au total) : suppression d'un fichier puis d'un dossier, refus sur une racine, un

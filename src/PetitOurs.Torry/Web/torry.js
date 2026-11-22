@@ -430,8 +430,16 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         });
         var fsDelModal = view.querySelector('.torry-fsdel-modal');
         view.querySelector('.torry-fsdel-cancel').addEventListener('click', function () { fsDelModal.hidden = true; });
-        view.querySelector('.torry-fsdel-confirm').addEventListener('input', function (e) {
-            view.querySelector('.torry-fsdel-ok').disabled = e.target.value.trim().toUpperCase() !== 'SUPPRIMER';
+        view.querySelector('.torry-fsdel-confirm').addEventListener('input', function () { instance.updateDeleteMode(); });
+        view.querySelector('.torry-fsdel-mode').addEventListener('change', function () { instance.updateDeleteMode(); });
+        view.querySelector('.torry-fs-trash-open').addEventListener('click', function () { instance.showTrash(true); });
+        view.querySelector('.torry-trash-back').addEventListener('click', function () { instance.showTrash(false); });
+        view.querySelector('.torry-trash-empty').addEventListener('click', function () { instance.emptyTrash(); });
+        view.querySelector('.torry-trash-list').addEventListener('click', function (e) {
+            var b = e.target.closest('button[data-trash]');
+            if (b) {
+                instance.onTrashAction(b.getAttribute('data-trash'), b.getAttribute('data-id'));
+            }
         });
         view.querySelector('.torry-fsdel-ok').addEventListener('click', function () { instance.confirmDeleteFiles(); });
         view.querySelector('.torry-fs-up').addEventListener('click', function () {
@@ -800,6 +808,7 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         var instance = this;
         return api('GET', 'Torry/Settings').then(function (settings) {
             instance.renderDestinationRows(settings.Destinations || []);
+            instance.trashRetention = settings.TrashRetentionDays;
             Object.keys(settings).forEach(function (key) {
                 var field = form.elements[key];
                 if (!field) {
@@ -958,17 +967,17 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         });
         this.fsDelete = { root: this.fs.root, paths: paths };
         this.view.querySelector('.torry-fsdel-title').textContent = paths.length === 1
-            ? 'Supprimer « ' + entries[0].Name + ' » définitivement'
-            : 'Supprimer ' + paths.length + ' éléments définitivement';
+            ? 'Supprimer « ' + entries[0].Name + ' »'
+            : 'Supprimer ' + paths.length + ' éléments';
         this.view.querySelector('.torry-fsdel-items').innerHTML = entries.map(function (e) {
             return '<div>• ' + escapeHtml(e.Name) + (e.IsDirectory ? ' <span class="torry-fs-meta">(dossier et tout son contenu)</span>' : '') + '</div>';
         }).join('');
         this.view.querySelector('.torry-fsdel-summary').textContent = 'Calcul de la taille…';
         var input = this.view.querySelector('.torry-fsdel-confirm');
         input.value = '';
-        this.view.querySelector('.torry-fsdel-ok').disabled = true;
+        this.view.querySelector('.torry-fsdel-mode').value = 'trash';
+        this.updateDeleteMode();
         this.view.querySelector('.torry-fsdel-modal').hidden = false;
-        setTimeout(function () { input.focus(); }, 50);
         Promise.all(paths.slice(0, 30).map(function (p) {
             return api('GET', 'Torry/Files/Analyze?Root=' + encodeURIComponent(instance.fs.root) + '&Path=' + encodeURIComponent(p))
                 .then(function (a) { return a; }, function () { return null; });
@@ -976,15 +985,127 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             var list = results.filter(function (a) { return !!a; });
             var files = list.reduce(function (n, a) { return n + (a.FileCount || 0); }, 0);
             var bytes = list.reduce(function (n, a) { return n + (a.TotalBytes || 0); }, 0);
-            instance.view.querySelector('.torry-fsdel-summary').textContent = files + ' fichier(s) · ' + formatBytes(bytes) + ' seront effacés.';
+            instance.view.querySelector('.torry-fsdel-summary').textContent = files + ' fichier(s) · ' + formatBytes(bytes);
+        });
+    };
+
+    View.prototype.updateDeleteMode = function () {
+        var toTrash = this.view.querySelector('.torry-fsdel-mode').value === 'trash';
+        var days = this.trashRetention;
+        this.view.querySelector('.torry-fsdel-definitive').hidden = toTrash;
+        var note = this.view.querySelector('.torry-fsdel-trashnote');
+        note.hidden = !toTrash;
+        note.textContent = 'Les éléments disparaîtront de la bibliothèque Emby et resteront restaurables depuis la corbeille de l\'onglet Fichiers'
+            + (days > 0 ? ' pendant ' + days + ' jour(s).' : '.') + ' Ils occupent toujours de la place sur le disque.';
+        var ok = this.view.querySelector('.torry-fsdel-ok');
+        ok.textContent = toTrash ? 'Mettre à la corbeille' : 'Supprimer définitivement';
+        ok.className = 'torry-btn ' + (toTrash ? 'torry-btn-primary' : 'torry-btn-danger') + ' torry-fsdel-ok';
+        ok.disabled = !toTrash && this.view.querySelector('.torry-fsdel-confirm').value.trim().toUpperCase() !== 'SUPPRIMER';
+        if (!toTrash) {
+            var input = this.view.querySelector('.torry-fsdel-confirm');
+            setTimeout(function () { input.focus(); }, 50);
+        }
+    };
+
+    // ---- corbeille
+
+    View.prototype.showTrash = function (on) {
+        this.trashVisible = !!on;
+        var view = this.view;
+        view.querySelector('.torry-trash-panel').hidden = !on;
+        ['.torry-fs-location', '.torry-fs-toolbar', '.torry-fs-list', '.torry-fs-mkdir', '.torry-fs-trash-open'].forEach(function (sel) {
+            view.querySelectorAll(sel).forEach(function (el) {
+                if (!el.closest('.torry-trash-panel')) {
+                    el.hidden = !!on;
+                }
+            });
+        });
+        if (on) {
+            this.loadTrash();
+        } else {
+            this.browse(this.fs.root, this.fs.path);
+        }
+    };
+
+    View.prototype.loadTrash = function () {
+        var instance = this;
+        return api('GET', 'Torry/Trash').then(function (trash) {
+            instance.trash = trash;
+            instance.trashRetention = trash.RetentionDays;
+            var entries = trash.Entries || [];
+            instance.view.querySelector('.torry-trash-summary').textContent = entries.length
+                ? entries.length + ' élément(s) · ' + formatBytes(trash.TotalBytes) + (trash.RetentionDays > 0 ? ' · vidage automatique après ' + trash.RetentionDays + ' jour(s)' : ' · jamais vidée automatiquement')
+                : '';
+            instance.view.querySelector('.torry-trash-empty').disabled = entries.length === 0;
+            var html = entries.map(function (e) {
+                var origin = e.RootName + (e.OriginalPath ? ' › ' + e.OriginalPath.split('/').join(' › ') : '');
+                var dates = 'supprimé le ' + new Date(e.DeletedUtc).toLocaleString('fr-FR')
+                    + (e.ExpiresUtc ? ' · effacé le ' + new Date(e.ExpiresUtc).toLocaleDateString('fr-FR') : '');
+                return '<div class="torry-fs-row">'
+                    + '<i class="md-icon torry-fs-icon">' + (e.IsDirectory ? 'folder' : 'description') + '</i>'
+                    + '<div class="torry-fs-name"><div>' + escapeHtml(e.Name) + '</div>'
+                    + '<div class="torry-fs-meta" style="white-space:normal;">Origine : ' + escapeHtml(origin) + '<br>' + escapeHtml(dates) + '</div></div>'
+                    + '<div class="torry-fs-meta">' + escapeHtml(e.FileCount + ' fichier(s) · ' + formatBytes(e.Bytes)) + '</div>'
+                    + '<button type="button" class="torry-btn torry-btn-small" data-trash="restore" data-id="' + escapeHtml(e.Id) + '"'
+                    + (e.CanRestore ? '' : ' disabled title="Le dossier d\'origine n\'est plus configuré"') + '>Restaurer</button>'
+                    + '<button type="button" class="torry-btn torry-btn-small" data-trash="purge" data-id="' + escapeHtml(e.Id) + '">Supprimer…</button>'
+                    + '</div>';
+            }).join('');
+            instance.view.querySelector('.torry-trash-list').innerHTML = html || '<div class="torry-empty" style="padding:1em;">La corbeille est vide.</div>';
+        }, function (err) {
+            return readError(err).then(function (m) { instance.notifyFiles(m, true); });
+        });
+    };
+
+    View.prototype.onTrashAction = function (action, id) {
+        var instance = this;
+        var entry = ((this.trash && this.trash.Entries) || []).filter(function (e) { return e.Id === id; })[0];
+        if (!entry) {
+            return;
+        }
+        if (action === 'restore') {
+            api('POST', 'Torry/Trash/' + encodeURIComponent(id) + '/Restore', {}).then(function () {
+                instance.notifyFiles('Restauration de « ' + entry.Name + ' » lancée.');
+                instance.refreshOperations();
+            }, function (err) {
+                return readError(err).then(function (m) { instance.notifyFiles(m, true); });
+            });
+            return;
+        }
+        this.prompt('Supprimer définitivement « ' + entry.Name + ' » ? Saisissez SUPPRIMER', '').then(function (value) {
+            if (!value) {
+                return;
+            }
+            api('POST', 'Torry/Trash/' + encodeURIComponent(id) + '/Purge', { Confirmation: value.toUpperCase() }).then(function () {
+                instance.notifyFiles('Suppression définitive de « ' + entry.Name + ' » lancée.');
+                instance.refreshOperations();
+            }, function (err) {
+                return readError(err).then(function (m) { instance.notifyFiles(m, true); });
+            });
+        });
+    };
+
+    View.prototype.emptyTrash = function () {
+        var instance = this;
+        this.prompt('Vider la corbeille ? Tout sera effacé définitivement. Saisissez SUPPRIMER', '').then(function (value) {
+            if (!value) {
+                return;
+            }
+            api('POST', 'Torry/Trash/Empty', { Confirmation: value.toUpperCase() }).then(function () {
+                instance.notifyFiles('Vidage de la corbeille lancé.');
+                instance.refreshOperations();
+            }, function (err) {
+                return readError(err).then(function (m) { instance.notifyFiles(m, true); });
+            });
         });
     };
 
     View.prototype.confirmDeleteFiles = function () {
         var instance = this;
         var d = this.fsDelete;
+        var toTrash = this.view.querySelector('.torry-fsdel-mode').value === 'trash';
         var confirmation = this.view.querySelector('.torry-fsdel-confirm').value.trim().toUpperCase();
-        if (!d || confirmation !== 'SUPPRIMER') {
+        if (!d || (!toTrash && confirmation !== 'SUPPRIMER')) {
             return;
         }
         this.view.querySelector('.torry-fsdel-modal').hidden = true;
@@ -993,7 +1114,9 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         var chain = Promise.resolve();
         d.paths.forEach(function (p) {
             chain = chain.then(function () {
-                return api('POST', 'Torry/Files/Delete', { Root: d.root, Path: p, Confirmation: confirmation })
+                return (toTrash
+                    ? api('POST', 'Torry/Files/Trash', { Root: d.root, Path: p })
+                    : api('POST', 'Torry/Files/Delete', { Root: d.root, Path: p, Confirmation: confirmation }))
                     .then(null, function (err) {
                         return readError(err).then(function (msg) { errors.push(p.split('/').pop() + ' : ' + msg); });
                     });
@@ -1002,7 +1125,8 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         chain.then(function () {
             loading.hide();
             var launched = d.paths.length - errors.length;
-            instance.notifyFiles(launched + ' suppression(s) lancée(s).' + (errors.length ? ' Refusées : ' + errors.join(' ; ') : ''), errors.length > 0);
+            instance.notifyFiles(launched + (toTrash ? ' élément(s) envoyé(s) à la corbeille.' : ' suppression(s) définitive(s) lancée(s).')
+                + (errors.length ? ' Refusés : ' + errors.join(' ; ') : ''), errors.length > 0);
             instance.selectAll(false);
             instance.refreshOperations();
         });
@@ -1304,10 +1428,11 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             instance.lastOps = ops;
             var html = ops.map(function (o) {
                 var pct = o.BytesTotal > 0 ? Math.min(100, 100 * o.BytesDone / o.BytesTotal) : (o.State === 'Done' ? 100 : 0);
-                var label = { Pending: 'En attente', Running: o.Copying ? 'Copie en cours' : 'En cours', Done: o.Kind === 'delete' ? 'Supprimé' : 'Terminé', Error: 'Erreur' }[o.State] || o.State;
+                var doneLabel = { delete: 'Supprimé', trash: 'À la corbeille', restore: 'Restauré' }[o.Kind] || 'Terminé';
+                var label = { Pending: 'En attente', Running: o.Copying ? 'Copie en cours' : 'En cours', Done: doneLabel, Error: 'Erreur' }[o.State] || o.State;
                 return '<div class="torry-task"><div class="torry-task-head"><div class="torry-task-name">' + escapeHtml(o.Source) + '</div>'
                     + '<span class="' + (o.State === 'Error' ? 'torry-badge torry-badge-err' : (o.State === 'Done' ? 'torry-badge torry-badge-ok' : 'torry-badge')) + '">' + escapeHtml(label) + '</span></div>'
-                    + (o.Kind === 'delete' ? '<div class="torry-note">Suppression définitive</div>' : '<div class="torry-note">→ ' + escapeHtml(o.Target) + '</div>')
+                    + (o.Kind === 'delete' ? '<div class="torry-note">' + escapeHtml(o.Target || 'Suppression définitive') + '</div>' : '<div class="torry-note">→ ' + escapeHtml(o.Target) + '</div>')
                     + (o.State === 'Running' ? '<div class="torry-bar"><div style="width:' + pct.toFixed(1) + '%"></div></div><div class="torry-meta"><span>'
                         + escapeHtml(formatBytes(o.BytesDone) + ' / ' + formatBytes(o.BytesTotal)) + '</span></div>' : '')
                     + (o.Message ? '<div class="' + (o.State === 'Error' ? 'torry-error' : 'torry-note') + '">' + escapeHtml(o.Message) + '</div>' : '')
@@ -1316,6 +1441,9 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             instance.view.querySelector('.torry-fs-ops').innerHTML = html || '<div class="torry-empty" style="padding:.6em 0;">Aucun déplacement récent.</div>';
             if (newlyFinished && !firstLoad && instance.activeTab === 'files') {
                 instance.browse(instance.fs.root, instance.fs.path);
+                if (instance.trashVisible) {
+                    instance.loadTrash();
+                }
             }
         });
     };

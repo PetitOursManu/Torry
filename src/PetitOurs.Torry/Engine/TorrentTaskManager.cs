@@ -566,6 +566,9 @@ namespace PetitOurs.Torry.Engine
 
         public IReadOnlyList<LibraryInfo> GetLibraries() => _library.GetLibraries();
 
+        /// <summary>Dossier de données de Torry (dans /config) : index de la corbeille, etc.</summary>
+        public string DataDirectory => _store.RootDirectory;
+
         /// <summary>Nom du dossier qui regroupe les dossiers de bibliothèque créés par Torry.</summary>
         public const string LibrariesFolderName = "bibliotheques";
 

@@ -370,6 +370,72 @@ namespace PetitOurs.Torry.Tests
         }
 
         [Fact]
+        public async Task Trash_moves_restores_purges_and_expires()
+        {
+            var options = Options(seed: false);
+            options.TrashRetentionDays = 30;
+            var manager = NewManager(options);
+            await manager.StartAsync();
+            var service = new FileOperationsService(manager, _notifier, _log);
+            TestSupport.WriteRandomFile(Path.Combine(_completed, "Album", "01.flac"), 2000, 1);
+            TestSupport.WriteRandomFile(Path.Combine(_completed, "Album", "CD2", "02.flac"), 1000, 2);
+            TestSupport.WriteRandomFile(Path.Combine(_completed, "seul.mkv"), 500, 3);
+
+            async Task<MoveOperationView> Wait(MoveOperationView started)
+            {
+                await TestSupport.WaitUntilAsync(() => service.GetOperations().Single(o => o.Id == started.Id).State is "Done" or "Error", Timeout, started.Kind);
+                return service.GetOperations().Single(o => o.Id == started.Id);
+            }
+
+            // Mise à la corbeille : l'élément disparaît de la liste ; la corbeille (dossier caché) n'y apparaît pas.
+            var trashed = await Wait(service.StartTrash("complete", "Album"));
+            Assert.True(trashed.State == "Done", trashed.Message);
+            Assert.Equal("trash", trashed.Kind);
+            Assert.False(Directory.Exists(Path.Combine(_completed, "Album")));
+            Assert.DoesNotContain(service.List("complete", "").Entries, e => e.Name.StartsWith(".", StringComparison.Ordinal));
+            Assert.Throws<UnsafePathException>(() => service.List("complete", FileBrowser.TrashFolderName));
+            Assert.True(Directory.Exists(Path.Combine(_completed, FileBrowser.TrashFolderName)));
+
+            var trash = service.GetTrash();
+            var entry = Assert.Single(trash.Entries);
+            Assert.Equal("Album", entry.Name);
+            Assert.Equal("Album", entry.OriginalPath);
+            Assert.Equal(2, entry.FileCount);
+            Assert.Equal(3000, trash.TotalBytes);
+            Assert.True(entry.CanRestore);
+            Assert.NotNull(entry.ExpiresUtc);
+
+            // Restauration, y compris si le nom a été repris entre-temps.
+            Directory.CreateDirectory(Path.Combine(_completed, "Album"));
+            var restored = await Wait(service.StartRestore(entry.Id));
+            Assert.True(restored.State == "Done", restored.Message);
+            Assert.True(File.Exists(Path.Combine(_completed, "Album (2)", "CD2", "02.flac")));
+            Assert.Empty(service.GetTrash().Entries);
+
+            // Suppression définitive depuis la corbeille : confirmation obligatoire.
+            await Wait(service.StartTrash("complete", "seul.mkv"));
+            var id = service.GetTrash().Entries.Single().Id;
+            Assert.Throws<FileOperationException>(() => service.StartPurge(id, "oui"));
+            var purged = await Wait(service.StartPurge(id, "SUPPRIMER"));
+            Assert.Contains("1 fichier(s)", purged.Message);
+            Assert.Empty(service.GetTrash().Entries);
+
+            // Vidage automatique : un élément plus vieux que la durée de conservation est effacé.
+            await Wait(service.StartTrash("complete", "Album (2)"));
+            var index = Path.Combine(manager.DataDirectory, "trash.json");
+            var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(index));
+            json[0]["DeletedUtc"] = new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            File.WriteAllText(index, json.ToJsonString());
+            var fresh = new FileOperationsService(manager, _notifier, _log);
+            Assert.Equal(1, await fresh.PurgeExpiredTrashAsync());
+            Assert.Empty(fresh.GetTrash().Entries);
+            Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(_completed, FileBrowser.TrashFolderName)));
+
+            Assert.Throws<FileOperationException>(() => service.StartEmptyTrash("non"));
+            await manager.StopAsync();
+        }
+
+        [Fact]
         public async Task Prepare_libraries_creates_writable_folders_and_attaches_them()
         {
             var options = Options(seed: false);

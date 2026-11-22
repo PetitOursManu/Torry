@@ -38,6 +38,8 @@ namespace PetitOurs.Torry
 
         public bool RefreshLibraryOnComplete { get; set; } = Defaults.RefreshLibraryOnComplete;
 
+        public int TrashRetentionDays { get; set; } = Defaults.TrashRetentionDays;
+
         /// <summary>Dossiers de destination par type de contenu Emby.</summary>
         public DestinationFolder[] Destinations { get; set; } = Array.Empty<DestinationFolder>();
 
@@ -59,6 +61,7 @@ namespace PetitOurs.Torry
                 SeedTimeLimitMinutes = SeedTimeLimitMinutes,
                 AutoStartAfterMetadata = AutoStartAfterMetadata,
                 RefreshLibraryOnComplete = RefreshLibraryOnComplete,
+                TrashRetentionDays = TrashRetentionDays,
                 Destinations = (Destinations ?? Array.Empty<DestinationFolder>()).Where(d => d != null).Select(d => d.Clone()).ToList()
             };
         }
@@ -79,6 +82,7 @@ namespace PetitOurs.Torry
             SeedTimeLimitMinutes = o.SeedTimeLimitMinutes;
             AutoStartAfterMetadata = o.AutoStartAfterMetadata;
             RefreshLibraryOnComplete = o.RefreshLibraryOnComplete;
+            TrashRetentionDays = o.TrashRetentionDays;
             Destinations = (o.Destinations ?? new System.Collections.Generic.List<DestinationFolder>()).Select(d => d.Clone()).ToArray();
         }
     }

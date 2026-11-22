@@ -155,6 +155,44 @@ namespace PetitOurs.Torry.Api
         public string Confirmation { get; set; }
     }
 
+    [Route("/Torry/Files/Trash", "POST", Summary = "Met un fichier ou un dossier à la corbeille (restaurable)")]
+    [Authenticated(Roles = "admin")]
+    public class TrashTorryFile : IReturn<MoveOperationView>
+    {
+        public string Root { get; set; }
+
+        public string Path { get; set; }
+    }
+
+    [Route("/Torry/Trash", "GET", Summary = "Contenu de la corbeille")]
+    [Authenticated(Roles = "admin")]
+    public class GetTorryTrash : IReturn<TrashView>
+    {
+    }
+
+    [Route("/Torry/Trash/{Id}/Restore", "POST", Summary = "Restaure un élément de la corbeille")]
+    [Authenticated(Roles = "admin")]
+    public class RestoreTorryTrash : IReturn<MoveOperationView>
+    {
+        public string Id { get; set; }
+    }
+
+    [Route("/Torry/Trash/{Id}/Purge", "POST", Summary = "Supprime définitivement un élément de la corbeille (confirmation « SUPPRIMER »)")]
+    [Authenticated(Roles = "admin")]
+    public class PurgeTorryTrash : IReturn<MoveOperationView>
+    {
+        public string Id { get; set; }
+
+        public string Confirmation { get; set; }
+    }
+
+    [Route("/Torry/Trash/Empty", "POST", Summary = "Vide la corbeille (confirmation « SUPPRIMER »)")]
+    [Authenticated(Roles = "admin")]
+    public class EmptyTorryTrash : IReturn<MoveOperationView>
+    {
+        public string Confirmation { get; set; }
+    }
+
     [Route("/Torry/Files/Folder", "POST", Summary = "Crée un dossier")]
     [Authenticated(Roles = "admin")]
     public class CreateTorryFolder : IReturn<FileEntryView>
@@ -209,6 +247,8 @@ namespace PetitOurs.Torry.Api
         public bool AutoStartAfterMetadata { get; set; }
 
         public bool RefreshLibraryOnComplete { get; set; }
+
+        public int TrashRetentionDays { get; set; }
 
         /// <summary>Destinations au format JSON : [{"Id","Name","ContentType","Path"}].</summary>
         public string DestinationsJson { get; set; }
@@ -326,6 +366,16 @@ namespace PetitOurs.Torry.Api
 
         public object Post(DeleteTorryFile request) => Guard(() => Files().StartDelete(request.Root, request.Path, request.Confirmation));
 
+        public object Post(TrashTorryFile request) => Guard(() => Files().StartTrash(request.Root, request.Path));
+
+        public object Get(GetTorryTrash request) => Guard(() => Files().GetTrash());
+
+        public object Post(RestoreTorryTrash request) => Guard(() => Files().StartRestore(request.Id));
+
+        public object Post(PurgeTorryTrash request) => Guard(() => Files().StartPurge(request.Id, request.Confirmation));
+
+        public object Post(EmptyTorryTrash request) => Guard(() => Files().StartEmptyTrash(request.Confirmation));
+
         public object Post(CreateTorryFolder request) =>
             Guard(() => new FileEntryView { Name = request.Name, IsDirectory = true, Category = "folder", Path = Files().CreateFolder(request.Root, request.Path, request.Name) });
 
@@ -356,6 +406,7 @@ namespace PetitOurs.Torry.Api
                 SeedTimeLimitMinutes = request.SeedTimeLimitMinutes,
                 AutoStartAfterMetadata = request.AutoStartAfterMetadata,
                 RefreshLibraryOnComplete = request.RefreshLibraryOnComplete,
+                TrashRetentionDays = request.TrashRetentionDays,
                 Destinations = ParseDestinations(request.DestinationsJson)
             };
 

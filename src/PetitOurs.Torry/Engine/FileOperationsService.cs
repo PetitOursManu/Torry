@@ -30,6 +30,386 @@ namespace PetitOurs.Torry.Engine
             _manager = manager ?? throw new ArgumentNullException(nameof(manager));
             _library = library ?? new NullLibraryNotifier();
             _log = log ?? new NullLog();
+            _trashTimer = new Timer(_ => _ = PurgeExpiredTrashAsync(), null, TimeSpan.FromMinutes(2), TimeSpan.FromHours(1));
+        }
+
+        // ------------------------------------------------------------------ corbeille
+
+        private readonly Timer _trashTimer;
+        private readonly object _trashLock = new object();
+        private List<TrashRecord> _trash;
+
+        private sealed class TrashRecord
+        {
+            public string Id { get; set; }
+
+            public string Name { get; set; }
+
+            public bool IsDirectory { get; set; }
+
+            public string RootId { get; set; }
+
+            public string RootPath { get; set; }
+
+            public string OriginalPath { get; set; }
+
+            public int FileCount { get; set; }
+
+            public long Bytes { get; set; }
+
+            public DateTime DeletedUtc { get; set; }
+        }
+
+        private string TrashIndexPath => Path.Combine(_manager.DataDirectory, "trash.json");
+
+        private List<TrashRecord> LoadTrash()
+        {
+            lock (_trashLock)
+            {
+                if (_trash != null)
+                {
+                    return _trash;
+                }
+
+                try
+                {
+                    _trash = File.Exists(TrashIndexPath)
+                        ? System.Text.Json.JsonSerializer.Deserialize<List<TrashRecord>>(File.ReadAllText(TrashIndexPath)) ?? new List<TrashRecord>()
+                        : new List<TrashRecord>();
+                }
+                catch (Exception ex)
+                {
+                    _log.Warn("Torry: index de la corbeille illisible : " + DiskErrors.SafeMessage(ex.Message));
+                    _trash = new List<TrashRecord>();
+                }
+
+                return _trash;
+            }
+        }
+
+        private void SaveTrash()
+        {
+            lock (_trashLock)
+            {
+                try
+                {
+                    Directory.CreateDirectory(_manager.DataDirectory);
+                    var temp = TrashIndexPath + ".tmp";
+                    File.WriteAllText(temp, System.Text.Json.JsonSerializer.Serialize(_trash ?? new List<TrashRecord>()));
+                    File.Move(temp, TrashIndexPath, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    _log.Error("Torry: enregistrement de la corbeille impossible : " + DiskErrors.Describe(ex));
+                }
+            }
+        }
+
+        public TrashView GetTrash()
+        {
+            var retention = _manager.Options.TrashRetentionDays;
+            var roots = _manager.GetBrowseRoots();
+            var view = new TrashView { RetentionDays = retention };
+            List<TrashRecord> records;
+            lock (_trashLock)
+            {
+                var list = LoadTrash();
+                // Éléments disparus du disque (supprimés à la main) : on les oublie.
+                var missing = list.Where(r => !SafeExists(r)).ToList();
+                if (missing.Count > 0)
+                {
+                    missing.ForEach(r => list.Remove(r));
+                    SaveTrash();
+                }
+
+                records = list.ToList();
+            }
+
+            foreach (var r in records.OrderByDescending(r => r.DeletedUtc))
+            {
+                var root = roots.FirstOrDefault(x => x.Id == r.RootId && string.Equals(x.Path, r.RootPath, StringComparison.Ordinal));
+                view.Entries.Add(new TrashEntryView
+                {
+                    Id = r.Id,
+                    Name = r.Name,
+                    IsDirectory = r.IsDirectory,
+                    RootId = r.RootId,
+                    RootName = root?.Name ?? "(dossier retiré des réglages)",
+                    OriginalPath = r.OriginalPath,
+                    FileCount = r.FileCount,
+                    Bytes = r.Bytes,
+                    DeletedUtc = r.DeletedUtc,
+                    ExpiresUtc = retention > 0 ? r.DeletedUtc.AddDays(retention) : (DateTime?)null,
+                    CanRestore = root != null
+                });
+                view.TotalBytes += r.Bytes;
+            }
+
+            return view;
+        }
+
+        private static bool SafeExists(TrashRecord r)
+        {
+            try
+            {
+                var directory = FileBrowser.TrashItemDirectory(r.RootPath, r.Id);
+                var item = Path.Combine(directory, r.Name);
+                return Directory.Exists(item) || File.Exists(item);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>Met un élément à la corbeille de sa racine (renommage instantané, restaurable).</summary>
+        public MoveOperationView StartTrash(string rootId, string path)
+        {
+            var root = _manager.FindRoot(rootId);
+            var plan = FileBrowser.PlanDelete(root, path);
+            var op = NewOperation("trash", plan.SourceDisplay, "Corbeille");
+            _ = Task.Run(() => RunExclusiveAsync(op, async () =>
+            {
+                var id = Guid.NewGuid().ToString("N");
+                var trashDirectory = FileBrowser.TrashItemDirectory(root.Path, id);
+                var name = Path.GetFileName(plan.Source);
+                var measure = FileBrowser.Analyze(root, path);
+                var note = await _manager.BeforeMoveAsync(plan.Source).ConfigureAwait(false);
+                Directory.CreateDirectory(trashDirectory);
+                try
+                {
+                    FileBrowser.Execute(plan, Path.Combine(trashDirectory, name), null);
+                }
+                catch
+                {
+                    FileManager.RemoveEmptyDirectories(trashDirectory, removeRoot: true);
+                    throw;
+                }
+
+                await _manager.AfterDeleteAsync(plan.Source).ConfigureAwait(false);
+                lock (_trashLock)
+                {
+                    LoadTrash().Add(new TrashRecord
+                    {
+                        Id = id,
+                        Name = name,
+                        IsDirectory = plan.IsDirectory,
+                        RootId = root.Id,
+                        RootPath = root.Path,
+                        OriginalPath = FileBrowser.ToRelative(root, plan.Source),
+                        FileCount = measure.FileCount,
+                        Bytes = measure.TotalBytes,
+                        DeletedUtc = DateTime.UtcNow
+                    });
+                    SaveTrash();
+                }
+
+                var refreshed = TryRefresh(Path.GetDirectoryName(plan.Source));
+                _log.Info("Torry: mis à la corbeille : " + plan.SourceDisplay);
+                return "Mis à la corbeille." + (refreshed ? " Bibliothèque actualisée." : string.Empty) + (note == null ? string.Empty : " " + note);
+            }));
+            return Copy(op);
+        }
+
+        /// <summary>Restaure un élément à son emplacement d'origine (« Nom (2) » si le nom est repris entre-temps).</summary>
+        public MoveOperationView StartRestore(string id)
+        {
+            var record = FindTrash(id);
+            var root = _manager.GetBrowseRoots().FirstOrDefault(r => r.Id == record.RootId && string.Equals(r.Path, record.RootPath, StringComparison.Ordinal))
+                ?? throw new FileOperationException("Le dossier d'origine n'est plus configuré dans Torry : restauration impossible.");
+            var op = NewOperation("restore", record.Name, FileBrowser.Display(root, PathGuard.CombineInside(root.Path, record.OriginalPath)));
+            _ = Task.Run(() => RunExclusiveAsync(op, () =>
+            {
+                var trashDirectory = FileBrowser.TrashItemDirectory(root.Path, record.Id);
+                var source = Path.Combine(trashDirectory, record.Name);
+                var original = PathGuard.CombineInside(root.Path, record.OriginalPath);
+                var parent = Path.GetDirectoryName(original);
+                Directory.CreateDirectory(parent);
+                var plan = new MovePlan
+                {
+                    Source = source,
+                    TargetDirectory = parent,
+                    TargetName = Path.GetFileName(original),
+                    SourceRoot = root,
+                    TargetRoot = root,
+                    IsDirectory = Directory.Exists(source)
+                };
+                var target = FileBrowser.ReserveTarget(plan);
+                FileBrowser.Execute(plan, target, null);
+                FileManager.RemoveEmptyDirectories(trashDirectory, removeRoot: true);
+                lock (_trashLock)
+                {
+                    LoadTrash().RemoveAll(r => r.Id == record.Id);
+                    SaveTrash();
+                }
+
+                var refreshed = TryRefresh(target);
+                Update(op, o => o.Target = FileBrowser.Display(root, target));
+                _log.Info("Torry: restauré depuis la corbeille : " + FileBrowser.Display(root, target));
+                return Task.FromResult("Restauré." + (refreshed ? " Bibliothèque actualisée." : string.Empty));
+            }));
+            return Copy(op);
+        }
+
+        /// <summary>Suppression définitive d'un élément de la corbeille (confirmation « SUPPRIMER »).</summary>
+        public MoveOperationView StartPurge(string id, string confirmation)
+        {
+            RequireConfirmation(confirmation);
+            var record = FindTrash(id);
+            var op = NewOperation("delete", record.Name + " (corbeille)", "Suppression définitive");
+            _ = Task.Run(() => RunExclusiveAsync(op, () => Task.FromResult("Supprimé (" + Purge(record) + " fichier(s)).")));
+            return Copy(op);
+        }
+
+        /// <summary>Vide toute la corbeille (confirmation « SUPPRIMER »).</summary>
+        public MoveOperationView StartEmptyTrash(string confirmation)
+        {
+            RequireConfirmation(confirmation);
+            var op = NewOperation("delete", "Corbeille", "Vidage de la corbeille");
+            _ = Task.Run(() => RunExclusiveAsync(op, () =>
+            {
+                List<TrashRecord> all;
+                lock (_trashLock)
+                {
+                    all = LoadTrash().ToList();
+                }
+
+                var files = all.Sum(Purge);
+                return Task.FromResult("Corbeille vidée (" + all.Count + " élément(s), " + files + " fichier(s)).");
+            }));
+            return Copy(op);
+        }
+
+        /// <summary>Vidage automatique des éléments plus anciens que la durée de conservation.</summary>
+        public async Task<int> PurgeExpiredTrashAsync()
+        {
+            var retention = _manager.Options.TrashRetentionDays;
+            if (retention <= 0)
+            {
+                return 0;
+            }
+
+            List<TrashRecord> expired;
+            lock (_trashLock)
+            {
+                expired = LoadTrash().Where(r => r.DeletedUtc.AddDays(retention) <= DateTime.UtcNow).ToList();
+            }
+
+            if (expired.Count == 0)
+            {
+                return 0;
+            }
+
+            await _worker.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                foreach (var record in expired)
+                {
+                    try
+                    {
+                        Purge(record);
+                    }
+                    catch (Exception ex)
+                    {
+                        _log.Warn("Torry: vidage automatique de la corbeille (" + record.Name + ") : " + DiskErrors.Describe(ex));
+                    }
+                }
+
+                _log.Info("Torry: corbeille : " + expired.Count + " élément(s) de plus de " + retention + " jour(s) supprimé(s).");
+                return expired.Count;
+            }
+            finally
+            {
+                _worker.Release();
+            }
+        }
+
+        private int Purge(TrashRecord record)
+        {
+            var count = FileBrowser.DeleteDirectory(FileBrowser.TrashItemDirectory(record.RootPath, record.Id));
+            lock (_trashLock)
+            {
+                LoadTrash().RemoveAll(r => r.Id == record.Id);
+                SaveTrash();
+            }
+
+            return count;
+        }
+
+        private TrashRecord FindTrash(string id)
+        {
+            lock (_trashLock)
+            {
+                return LoadTrash().FirstOrDefault(r => r.Id == id) ?? throw new FileOperationException("Élément introuvable dans la corbeille.");
+            }
+        }
+
+        private static void RequireConfirmation(string confirmation)
+        {
+            if (!string.Equals((confirmation ?? string.Empty).Trim(), FileBrowser.DeleteConfirmation, StringComparison.Ordinal))
+            {
+                throw new FileOperationException("Confirmation explicite requise : saisissez « " + FileBrowser.DeleteConfirmation + " ».");
+            }
+        }
+
+        private bool TryRefresh(string directory)
+        {
+            try
+            {
+                return _library.RefreshNow(directory)?.Refreshed == true;
+            }
+            catch (Exception ex)
+            {
+                _log.Warn("Torry: actualisation de la bibliothèque : " + DiskErrors.SafeMessage(ex.Message));
+                return false;
+            }
+        }
+
+        private MoveOperationView NewOperation(string kind, string source, string target)
+        {
+            var op = new MoveOperationView
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Kind = kind,
+                State = "Pending",
+                Source = source,
+                Target = target,
+                StartedUtc = DateTime.UtcNow
+            };
+            AddOperation(op);
+            return op;
+        }
+
+        /// <summary>Exécute une opération dans la file (une à la fois) et met à jour son état.</summary>
+        private async Task RunExclusiveAsync(MoveOperationView op, Func<Task<string>> work)
+        {
+            await _worker.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                Update(op, o => o.State = "Running");
+                var message = await work().ConfigureAwait(false);
+                Update(op, o =>
+                {
+                    o.State = "Done";
+                    o.Message = message;
+                    o.FinishedUtc = DateTime.UtcNow;
+                });
+            }
+            catch (Exception ex)
+            {
+                var message = ex is FileOperationException || ex is UnsafePathException ? ex.Message : DiskErrors.Describe(ex);
+                Update(op, o =>
+                {
+                    o.State = "Error";
+                    o.Message = message;
+                    o.FinishedUtc = DateTime.UtcNow;
+                });
+                _log.Warn("Torry: opération « " + op.Kind + " » impossible (" + op.Source + ") : " + message);
+            }
+            finally
+            {
+                _worker.Release();
+            }
         }
 
         public DirectoryListingView List(string rootId, string path) => FileBrowser.List(_manager.FindRoot(rootId), path);

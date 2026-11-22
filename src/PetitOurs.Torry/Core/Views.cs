@@ -292,6 +292,45 @@ namespace PetitOurs.Torry.Core
         internal TorryOptions Options { get; set; }
     }
 
+    /// <summary>Élément mis à la corbeille (restaurable).</summary>
+    public sealed class TrashEntryView
+    {
+        public string Id { get; set; }
+
+        public string Name { get; set; }
+
+        public bool IsDirectory { get; set; }
+
+        /// <summary>Racine d'origine (identifiant et nom).</summary>
+        public string RootId { get; set; }
+
+        public string RootName { get; set; }
+
+        /// <summary>Chemin relatif d'origine, séparé par « / ».</summary>
+        public string OriginalPath { get; set; }
+
+        public int FileCount { get; set; }
+
+        public long Bytes { get; set; }
+
+        public DateTime DeletedUtc { get; set; }
+
+        /// <summary>Date de suppression automatique (null si la corbeille n'est jamais vidée automatiquement).</summary>
+        public DateTime? ExpiresUtc { get; set; }
+
+        /// <summary>Faux si la racine d'origine n'est plus configurée (restauration impossible).</summary>
+        public bool CanRestore { get; set; }
+    }
+
+    public sealed class TrashView
+    {
+        public List<TrashEntryView> Entries { get; set; } = new List<TrashEntryView>();
+
+        public long TotalBytes { get; set; }
+
+        public int RetentionDays { get; set; }
+    }
+
     public sealed class LibraryInfo
     {
         public string Name { get; set; }

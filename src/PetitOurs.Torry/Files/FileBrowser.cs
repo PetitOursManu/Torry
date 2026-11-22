@@ -59,6 +59,12 @@ namespace PetitOurs.Torry.Files
     {
         public const int MaxEntries = 2000;
 
+        /// <summary>
+        /// Corbeille de chaque racine. Le point initial la rend invisible pour Emby sous Linux
+        /// (CoreResolutionIgnoreRule ignore les noms commençant par « . », vérifié dans Emby 4.10.2).
+        /// </summary>
+        public const string TrashFolderName = ".torry-corbeille";
+
         private static readonly char[] Separators = { '/', '\\' };
 
         /// <summary>Chemin absolu correspondant à un chemin relatif dans une racine (aucune sortie possible).</summary>
@@ -74,6 +80,12 @@ namespace PetitOurs.Torry.Files
             if (cleaned.Length == 0)
             {
                 return rootPath;
+            }
+
+            var firstComponent = cleaned.Split(Separators)[0];
+            if (string.Equals(firstComponent, TrashFolderName, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new UnsafePathException("Ce dossier est réservé à la corbeille de Torry.");
             }
 
             var full = PathGuard.CombineInside(rootPath, cleaned);
@@ -135,6 +147,11 @@ namespace PetitOurs.Torry.Files
             {
                 try
                 {
+                    if (string.Equals(entry.Name, TrashFolderName, StringComparison.OrdinalIgnoreCase) && string.IsNullOrEmpty(view.Path))
+                    {
+                        continue; // corbeille masquée
+                    }
+
                     if (entry.LinkTarget != null || (entry.Attributes & FileAttributes.ReparsePoint) != 0)
                     {
                         continue; // liens symboliques ignorés
@@ -309,6 +326,30 @@ namespace PetitOurs.Torry.Files
 
             var count = 0;
             DeleteTree(plan.Source, ref count);
+            return count;
+        }
+
+        /// <summary>Dossier d'un élément de corbeille : &lt;racine&gt;/.torry-corbeille/&lt;id&gt;.</summary>
+        public static string TrashItemDirectory(string rootPath, string id)
+        {
+            if (string.IsNullOrEmpty(id) || id.Length > 64 || !id.All(c => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')))
+            {
+                throw new UnsafePathException("Identifiant de corbeille invalide.");
+            }
+
+            return Path.Combine(PathGuard.NormalizeDirectory(rootPath), TrashFolderName, id);
+        }
+
+        /// <summary>Supprime un dossier sans suivre les liens ; renvoie le nombre de fichiers supprimés.</summary>
+        public static int DeleteDirectory(string path)
+        {
+            if (!Directory.Exists(path))
+            {
+                return 0;
+            }
+
+            var count = 0;
+            DeleteTree(path, ref count);
             return count;
         }
 

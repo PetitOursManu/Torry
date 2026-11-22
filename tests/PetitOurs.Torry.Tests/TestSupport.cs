@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -143,10 +144,21 @@ namespace PetitOurs.Torry.Tests
                 : new LibraryRefreshResult { Refreshed = false, Message = "Aucune bibliothèque." };
         }
 
-        public IReadOnlyList<LibraryInfo> GetLibraries() => new[]
+        public List<LibraryInfo> Libraries { get; } = new List<LibraryInfo>
         {
             new LibraryInfo { Name = "Films", ContentType = "movies", Locations = new List<string> { "/media/films" } }
         };
+
+        public List<string> Attached { get; } = new List<string>();
+
+        public IReadOnlyList<LibraryInfo> GetLibraries() => Libraries;
+
+        public void AddLibraryLocation(string libraryName, string path)
+        {
+            var library = Libraries.Single(l => l.Name == libraryName);
+            library.Locations.Add(path);
+            Attached.Add(libraryName + "=" + path);
+        }
     }
 
     internal sealed class ListLog : ITorryLog

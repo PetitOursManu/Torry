@@ -5,6 +5,7 @@ using System.Linq;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Providers;
+using MediaBrowser.Model.Configuration;
 using MediaBrowser.Model.IO;
 using MediaBrowser.Model.Logging;
 using PetitOurs.Torry.Core;
@@ -130,6 +131,30 @@ namespace PetitOurs.Torry.Emby
                     Locations = (f.Locations ?? Array.Empty<string>()).ToList()
                 })
                 .ToList();
+        }
+
+        public void AddLibraryLocation(string libraryName, string path)
+        {
+            var info = _libraryManager.GetVirtualFolders().FirstOrDefault(f => string.Equals(f.Name, libraryName, StringComparison.Ordinal))
+                ?? throw new InvalidOperationException("Bibliothèque « " + libraryName + " » introuvable.");
+
+            CollectionFolder folder = null;
+            if (long.TryParse(info.ItemId, out var internalId))
+            {
+                folder = _libraryManager.GetItemById(internalId) as CollectionFolder;
+            }
+
+            if (folder == null && Guid.TryParse(info.ItemId, out var guid))
+            {
+                folder = _libraryManager.GetItemById(guid) as CollectionFolder;
+            }
+
+            if (folder == null)
+            {
+                throw new InvalidOperationException("Bibliothèque « " + libraryName + " » introuvable.");
+            }
+
+            _libraryManager.AddMediaPaths(folder, new[] { new MediaPathInfo { Path = path } }, false);
         }
 
         public bool IsInLibrary(string path)

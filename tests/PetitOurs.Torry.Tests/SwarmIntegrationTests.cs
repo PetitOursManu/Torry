@@ -342,6 +342,44 @@ namespace PetitOurs.Torry.Tests
         }
 
         [Fact]
+        public async Task Prepare_libraries_creates_writable_folders_and_attaches_them()
+        {
+            var options = Options(seed: false);
+            // « Films » visait un dossier non inscriptible (cas réel : dossier de bibliothèque appartenant à root).
+            options.Destinations.Add(new DestinationFolder { Id = "films1", Name = "Films", ContentType = MediaTypes.Movies, Path = "/proc/torry-films" });
+            options.Destinations.Add(new DestinationFolder { Id = "music2", Name = "Music 2", ContentType = MediaTypes.Music, Path = "/proc/torry-musics" });
+            _notifier.Libraries.Add(new LibraryInfo { Name = "Musique", ContentType = MediaTypes.Music, Locations = new List<string> { "/musics" } });
+            _notifier.Libraries.Add(new LibraryInfo { Name = "Listes", ContentType = "playlists", Locations = new List<string>() });
+
+            var manager = NewManager(options);
+            await manager.StartAsync();
+            var result = await manager.PrepareLibrariesAsync();
+
+            var baseDirectory = Path.Combine(_root, "downloads", "bibliotheques");
+            Assert.Equal(baseDirectory, result.BaseDirectory);
+            Assert.Equal(new[] { "Films", "Musique" }, result.Libraries.Select(l => l.Name).ToArray());
+            Assert.All(result.Libraries, l => Assert.Null(l.Error));
+            Assert.All(result.Libraries, l => Assert.True(l.Attached && l.Created));
+            Assert.True(Directory.Exists(Path.Combine(baseDirectory, "Films")));
+            Assert.Contains("Films=" + Path.Combine(baseDirectory, "Films"), _notifier.Attached);
+            Assert.Contains("Musique=" + Path.Combine(baseDirectory, "Musique"), _notifier.Attached);
+            Assert.Equal(new[] { "Music 2" }, result.RemovedDestinations);
+
+            var destinations = manager.Options.Destinations;
+            Assert.Equal(2, destinations.Count);
+            var films = destinations.Single(d => d.Name == "Films");
+            Assert.Equal("films1", films.Id);
+            Assert.Equal(Path.Combine(baseDirectory, "Films"), films.Path);
+            Assert.Equal(MediaTypes.Music, destinations.Single(d => d.Name == "Musique").ContentType);
+
+            // Relance : rien n'est ajouté deux fois.
+            var again = await manager.PrepareLibrariesAsync();
+            Assert.All(again.Libraries, l => Assert.True(l.AlreadyAttached && !l.Attached && !l.Created));
+            Assert.Equal(2, _notifier.Attached.Count);
+            await manager.StopAsync();
+        }
+
+        [Fact]
         public async Task Manual_library_refresh_targets_the_completed_folder()
         {
             var options = Options(seed: false);

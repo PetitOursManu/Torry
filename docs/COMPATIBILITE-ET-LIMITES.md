@@ -91,6 +91,11 @@ serveur Emby, pas l'application.
 - **Cache de la page après une mise à jour** : Emby identifie la page par la version du plugin. Chaque
   version publiée de Torry change donc de numéro, et le navigateur recharge la page tout seul. Si une page
   semble ancienne après une mise à jour, rechargez complètement l'onglet (Ctrl+F5).
+- **« Préparer les bibliothèques »** : le dossier `bibliotheques/` est créé à côté du dossier « en cours »,
+  qui doit donc être dans un sous-dossier (par exemple `/downloads/incomplete`). Les types de bibliothèque
+  non pris en charge (collections, listes de lecture, TV en direct) sont ignorés. Les destinations dans
+  lesquelles Torry ne peut pas écrire, et qui ne correspondent à aucune bibliothèque, sont retirées.
+  L'emplacement ajouté à une bibliothèque ne s'enlève que depuis Emby.
 - **Explorateur de fichiers** : il permet de déplacer, renommer et créer des dossiers, mais **pas de supprimer**
   (la suppression passe par « Supprimer… » sur une tâche). Les liens symboliques sont masqués et jamais suivis :
   un déplacement entre volumes ne recopie pas les liens qu'un dossier contient. La liste d'un dossier est

@@ -254,6 +254,41 @@ namespace PetitOurs.Torry.Core
         internal List<KeyValuePair<string, long>> Files { get; set; }
     }
 
+    public sealed class PreparedLibraryView
+    {
+        public string Name { get; set; }
+
+        public string ContentTypeLabel { get; set; }
+
+        /// <summary>Dossier créé par Torry (accessible en écriture).</summary>
+        public string Path { get; set; }
+
+        public bool Created { get; set; }
+
+        /// <summary>Emplacement ajouté à la bibliothèque Emby lors de cette opération.</summary>
+        public bool Attached { get; set; }
+
+        /// <summary>L'emplacement faisait déjà partie de la bibliothèque.</summary>
+        public bool AlreadyAttached { get; set; }
+
+        public string Error { get; set; }
+    }
+
+    public sealed class PrepareLibrariesView
+    {
+        public string BaseDirectory { get; set; }
+
+        public List<PreparedLibraryView> Libraries { get; set; } = new List<PreparedLibraryView>();
+
+        /// <summary>Destinations retirées car Torry ne pouvait pas y écrire.</summary>
+        public List<string> RemovedDestinations { get; set; } = new List<string>();
+
+        public string Message { get; set; }
+
+        /// <summary>Réglages résultants (à enregistrer par la couche Emby).</summary>
+        internal TorryOptions Options { get; set; }
+    }
+
     public sealed class LibraryInfo
     {
         public string Name { get; set; }

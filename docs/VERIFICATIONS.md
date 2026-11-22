@@ -109,6 +109,26 @@ Note : cette empreinte est celle de la version vérifiée ce jour-là. La DLL pu
 (licence MIT, indicateur d'écoute du port), son empreinte a donc changé. `./build.sh` affiche celle de la
 version courante.
 
+## 5 sexies. « Préparer les bibliothèques » (version 0.3.2)
+
+Reproduction du cas réel dans `lscr.io/linuxserver/emby:4.10.2` : les bibliothèques Films (`/media/Films`) et
+Music 2 (`/musics`) sont sur des volumes appartenant à `root` (mode 755), et `/downloads` appartient à
+`abc` (UID 1000).
+
+| Vérification | Résultat |
+|---|---|
+| Enregistrer une destination `/media/Films` | HTTP 400 « Permissions insuffisantes » : erreur de l'utilisateur reproduite |
+| Clic sur « Préparer les bibliothèques » | « 2 bibliothèque(s) prête(s) », destinations Films → `/downloads/bibliotheques/Films`, Music 2 → `/downloads/bibliotheques/Music 2`, persistées dans le XML |
+| Côté Emby (`/Library/VirtualFolders`) | Films : `/downloads/bibliotheques/Films` + `/media/Films` ; Music 2 : `/downloads/bibliotheques/Music 2` + `/musics` |
+| Droits | `/downloads/bibliotheques/Films` appartient à `abc` |
+| Déplacement d'un film de `complete/` vers Films | Renommage instantané (pas de copie), « Bibliothèque actualisée » |
+| Bibliothèque Films dans Emby | « Ancien Film » (`/media/Films/…`) et « Nouveau Film » (`/downloads/bibliotheques/Films/…`) |
+
+La confirmation (fenêtre native `window.confirm`) a été acceptée automatiquement par script : le panneau de
+navigateur de test ne permet pas de cliquer sur les fenêtres natives. Tout le reste a été fait par de vrais
+clics. Test automatisé : création, rattachement, reprise de la destination « Films » qui échouait, retrait
+d'une destination inaccessible, et relance sans doublon (90 tests au total).
+
 ## 5 quinquies. Fenêtre de déplacement repensée (version 0.3.1)
 
 - Analyse du contenu (`GET /Torry/Files/Analyze`), dans `lscr.io/linuxserver/emby:4.10.2` : un album FLAC

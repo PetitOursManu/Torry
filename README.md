@@ -40,9 +40,27 @@ qBittorrent, ni Radarr ou Sonarr, ni service de débridage).
 
 ## Dossiers de destination et onglet « Fichiers »
 
-**Destinations.** Dans **Réglages > Dossiers de destination**, déclarez un dossier par type de contenu Emby :
-nom, type (Films, Séries, Musique, Clips musicaux, Vidéos personnelles, Photos, Livres, Livres audio, Mixte) et
-chemin. **« Importer les bibliothèques Emby »** préremplit la liste avec vos bibliothèques existantes.
+**Préparer les bibliothèques (recommandé).** Dans **Réglages > Dossiers de destination**, le bouton
+**« Préparer les bibliothèques »** règle tout en un clic, sans terminal :
+
+1. pour chaque bibliothèque Emby, Torry crée son propre dossier dans `bibliotheques/`, à côté du dossier
+   « en cours » (par exemple `/downloads/bibliotheques/Films`) ;
+2. il ajoute ce dossier comme **emplacement supplémentaire** de la bibliothèque : Films regarde alors
+   `/media/Films` **et** `/downloads/bibliotheques/Films` ;
+3. il l'enregistre comme destination.
+
+Torry tourne sous l'utilisateur d'Emby et ne peut pas changer les droits des dossiers qui ne lui
+appartiennent pas, par exemple des dossiers de bibliothèque appartenant à `root` (« Permissions
+insuffisantes »). Il crée donc les siens : ils ont toujours les bons droits et sont sur le même volume que les
+téléchargements, donc **finalisation et déplacements instantanés**. Vos dossiers existants ne sont pas
+modifiés. Les fichiers déjà présents dans un dossier appartenant à `root` restent visibles dans Emby, mais
+Torry ne peut pas les déplacer. L'opération peut être relancée sans risque : rien n'est ajouté deux fois.
+Pour annuler, retirez l'emplacement dans les réglages de la bibliothèque, côté Emby.
+
+**Destinations manuelles.** Vous pouvez aussi déclarer chaque dossier vous-même : nom, type (Films, Séries,
+Musique, Clips musicaux, Vidéos personnelles, Photos, Livres, Livres audio, Mixte) et chemin.
+**« Importer les bibliothèques Emby »** préremplit la liste avec les emplacements existants, qui doivent alors
+être accessibles en écriture par Emby.
 
 **Au choix des fichiers**, une liste « Destination » propose automatiquement :
 
@@ -196,7 +214,7 @@ docker exec "$CONTAINER" grep -i "torry" /config/logs/embyserver.txt | tail -3
 Vous devez voir :
 
 ```
-Info App: Loading PetitOurs.Torry, Version=0.3.1.0 ... from /config/plugins/PetitOurs.Torry.dll
+Info App: Loading PetitOurs.Torry, Version=0.3.2.0 ... from /config/plugins/PetitOurs.Torry.dll
 Info Torry: Torry démarré : 0 tâche(s), port BitTorrent 6881.
 ```
 
@@ -219,11 +237,9 @@ Torry n'écoute sur 6881 que pendant qu'un torrent est en téléchargement ou en
    Dans l'onglet **Réglages**, les valeurs par défaut conviennent : `/downloads/incomplete`,
    `/downloads/complete`, port 6881. Cliquez sur **Enregistrer** : Torry revérifie les dossiers, et les
    avertissements disparaissent si tout est correct.
-4. Facultatif : dans **Réglages > Dossiers de destination**, cliquez sur **« Importer les bibliothèques Emby »**.
-   Les volumes `/movies` et `/tvshows` du modèle Coolify deviennent alors des destinations « Films » et
-   « Séries ». Ce sont des montages distincts de `/downloads` : y envoyer un torrent ou y déplacer un fichier
-   implique une **copie**. Pour des déplacements instantanés, voir
-   [Dossiers de destination](#dossiers-de-destination-et-onglet-fichiers).
+4. Dans **Réglages > Dossiers de destination**, cliquez sur **« Préparer les bibliothèques »**. Torry crée
+   `/downloads/bibliotheques/<Bibliothèque>` et l'ajoute à chaque bibliothèque Emby : ni `chown`, ni copie
+   entre volumes. Voir [Dossiers de destination](#dossiers-de-destination-et-onglet-fichiers).
 5. Collez un lien magnet ou importez un `.torrent`, choisissez les fichiers et la destination, puis lancez
    le téléchargement.
 6. Pendant que ce torrent est actif, [testez le port](#tester-le-port-bittorrent).

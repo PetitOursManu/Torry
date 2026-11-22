@@ -396,6 +396,7 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             instance.addDestinationRow({ Id: newId(), Name: '', ContentType: 'movies', Path: '' });
         });
         view.querySelector('.torry-dest-import').addEventListener('click', function () { instance.importLibraries(); });
+        view.querySelector('.torry-dest-prepare').addEventListener('click', function () { instance.prepareLibraries(); });
         view.querySelector('.torry-dests').addEventListener('click', function (e) {
             var b = e.target.closest('button[data-dest-remove]');
             if (b) {
@@ -1100,6 +1101,39 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             });
         });
         return result;
+    };
+
+    View.prototype.prepareLibraries = function () {
+        var instance = this;
+        var ok = window.confirm('Torry va créer un dossier par bibliothèque Emby (dans « bibliotheques », à côté du dossier « en cours ») '
+            + 'et l\'ajouter comme emplacement supplémentaire de chaque bibliothèque. Vos dossiers existants ne sont pas modifiés. Continuer ?');
+        if (!ok) {
+            return;
+        }
+        var box = this.view.querySelector('.torry-prepare-result');
+        box.innerHTML = '';
+        loading.show();
+        api('POST', 'Torry/Libraries/Prepare', {}).then(function (result) {
+            var html = '<div class="torry-warn" style="margin-top:.8em;">' + escapeHtml(result.Message || 'Terminé.') + '<ul style="margin:.4em 0 0;padding-left:1.2em;">';
+            (result.Libraries || []).forEach(function (l) {
+                var status = l.Error ? 'erreur : ' + l.Error
+                    : (l.Attached ? 'emplacement ajouté à la bibliothèque' : (l.AlreadyAttached ? 'déjà prête' : 'prête'));
+                html += '<li><strong>' + escapeHtml(l.Name) + '</strong> (' + escapeHtml(l.ContentTypeLabel || '') + ') → <code>'
+                    + escapeHtml(l.Path || '') + '</code> : ' + escapeHtml(status) + '</li>';
+            });
+            html += '</ul>';
+            if ((result.RemovedDestinations || []).length) {
+                html += '<div style="margin-top:.4em;">Destinations retirées (Torry ne pouvait pas y écrire) : ' + escapeHtml(result.RemovedDestinations.join(', ')) + '.</div>';
+            }
+            box.innerHTML = html + '</div>';
+            instance.view.querySelector('.torry-settings-message').innerHTML = '';
+            instance.lastStatusJson = null;
+            return Promise.all([instance.loadSettings(), instance.refresh()]);
+        }, function (err) {
+            return readError(err).then(function (m) {
+                box.innerHTML = '<div class="torry-error" style="margin-top:.8em;">' + escapeHtml(m) + '</div>';
+            });
+        }).then(function () { loading.hide(); });
     };
 
     View.prototype.importLibraries = function () {

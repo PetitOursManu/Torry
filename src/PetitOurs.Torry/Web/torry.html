@@ -196,6 +196,18 @@
 
                     <h3>Dossiers de destination</h3>
                     <div class="torry-help" style="font-size:.85em;opacity:.7;margin-bottom:.8em;">Un dossier par type de contenu Emby (Films, Séries, Musique…). Au choix des fichiers, Torry propose la destination adaptée ; l'onglet Fichiers permet ensuite de déplacer. Chemins vus par le conteneur Emby. Pour des déplacements instantanés, placez-les sur le même volume Docker que le dossier « en cours ».</div>
+                    <div class="torry-box" style="margin-bottom:1em;">
+                        <strong>Préparer les bibliothèques automatiquement</strong>
+                        <div class="torry-help" style="font-size:.88em;opacity:.8;margin:.4em 0 .7em;">
+                            Recommandé, surtout si un dossier de bibliothèque affiche « Permissions insuffisantes ». Pour chaque
+                            bibliothèque Emby, Torry crée son propre dossier dans <code>bibliotheques/</code>, à côté du dossier
+                            « en cours » : il y a donc toujours les droits, et les déplacements sont instantanés. Il l'ajoute
+                            comme emplacement supplémentaire de la bibliothèque et l'utilise comme destination. Vos dossiers
+                            existants ne sont pas modifiés.
+                        </div>
+                        <button type="button" class="torry-btn torry-btn-primary torry-btn-small torry-dest-prepare">Préparer les bibliothèques</button>
+                        <div class="torry-prepare-result"></div>
+                    </div>
                     <div class="torry-dests"></div>
                     <div class="torry-row" style="margin-bottom:1em;">
                         <button type="button" class="torry-btn torry-btn-small torry-dest-add">Ajouter un dossier</button>
@@ -246,7 +258,8 @@
 
                 <div class="torry-warn torry-move-nodest" hidden>
                     Aucun dossier de destination n'est configuré : seul « Téléchargements terminés » est disponible.
-                    Pour envoyer vers vos bibliothèques (Films, Séries, Musique…), ajoutez-les dans les réglages.
+                    Pour envoyer vers vos bibliothèques (Films, Séries, Musique…), utilisez « Préparer les
+                    bibliothèques » dans les réglages.
                     <div style="margin-top:.5em;"><button type="button" class="torry-btn torry-btn-small torry-move-configure">Configurer les dossiers de destination</button></div>
                 </div>
 

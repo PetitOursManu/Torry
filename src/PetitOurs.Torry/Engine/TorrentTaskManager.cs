@@ -566,6 +566,113 @@ namespace PetitOurs.Torry.Engine
 
         public IReadOnlyList<LibraryInfo> GetLibraries() => _library.GetLibraries();
 
+        /// <summary>Nom du dossier qui regroupe les dossiers de bibliothèque créés par Torry.</summary>
+        public const string LibrariesFolderName = "bibliotheques";
+
+        /// <summary>
+        /// « Préparer les bibliothèques » : pour chaque bibliothèque Emby, crée un dossier accessible en écriture à côté
+        /// du dossier « en cours » (même volume → déplacements instantanés), l'ajoute comme emplacement de la
+        /// bibliothèque et l'enregistre comme destination. Torry ne peut pas changer les droits des dossiers qui ne lui
+        /// appartiennent pas : il crée donc les siens. Idempotent : peut être relancé sans dommage.
+        /// </summary>
+        public async Task<PrepareLibrariesView> PrepareLibrariesAsync()
+        {
+            var options = Options;
+            var incomplete = PathGuard.NormalizeDirectory(options.IncompleteDirectory);
+            var parent = Path.GetDirectoryName(incomplete);
+            if (string.IsNullOrEmpty(parent) || Path.GetPathRoot(parent) == parent)
+            {
+                throw new TorryUserException("Le dossier « en cours » doit être dans un sous-dossier (par ex. /downloads/incomplete) pour que Torry puisse créer les dossiers de bibliothèque à côté.");
+            }
+
+            var baseDirectory = Path.Combine(parent, LibrariesFolderName);
+            var writeError = FileManager.CheckWritable(baseDirectory);
+            if (writeError != null)
+            {
+                throw new TorryUserException("Impossible de créer « " + baseDirectory + " » : " + writeError);
+            }
+
+            var view = new PrepareLibrariesView { BaseDirectory = baseDirectory };
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var touchedDestinations = new HashSet<string>(StringComparer.Ordinal);
+            var libraries = _library.GetLibraries().Where(l => MediaTypes.IsKnownContentType(l.ContentType)).ToList();
+            if (libraries.Count == 0)
+            {
+                throw new TorryUserException("Aucune bibliothèque Emby compatible (Films, Séries, Musique…) : créez-en d'abord dans Emby.");
+            }
+
+            foreach (var library in libraries)
+            {
+                var item = new PreparedLibraryView { Name = library.Name, ContentTypeLabel = MediaTypes.Label(library.ContentType) };
+                view.Libraries.Add(item);
+                try
+                {
+                    var folderName = PathGuard.SanitizeFolderName(library.Name, "bibliotheque");
+                    var candidate = folderName;
+                    for (var i = 2; !used.Add(candidate); i++)
+                    {
+                        candidate = folderName + " (" + i + ")";
+                    }
+
+                    var path = PathGuard.CombineInside(baseDirectory, candidate);
+                    item.Path = path;
+                    item.Created = !Directory.Exists(path);
+                    Directory.CreateDirectory(path);
+                    var error = FileManager.CheckWritable(path);
+                    if (error != null)
+                    {
+                        item.Error = error;
+                        continue;
+                    }
+
+                    if ((library.Locations ?? new List<string>()).Any(l => string.Equals(PathGuard.NormalizeDirectory(l), path, StringComparison.Ordinal)))
+                    {
+                        item.AlreadyAttached = true;
+                    }
+                    else
+                    {
+                        _library.AddLibraryLocation(library.Name, path);
+                        item.Attached = true;
+                        _log.Info("Torry: emplacement « " + path + " » ajouté à la bibliothèque « " + library.Name + " ».");
+                    }
+
+                    // Destination : on reprend celle du même nom (même si son ancien chemin était inaccessible).
+                    var destination = options.Destinations.FirstOrDefault(d => string.Equals(d.Name?.Trim(), library.Name.Trim(), StringComparison.OrdinalIgnoreCase))
+                        ?? options.Destinations.FirstOrDefault(d => !string.IsNullOrEmpty(d.Path) && string.Equals(PathGuard.NormalizeDirectory(d.Path), path, StringComparison.Ordinal));
+                    if (destination == null)
+                    {
+                        destination = new DestinationFolder { Id = Guid.NewGuid().ToString("N").Substring(0, 12) };
+                        options.Destinations.Add(destination);
+                    }
+
+                    destination.Name = library.Name.Trim();
+                    destination.ContentType = library.ContentType;
+                    destination.Path = path;
+                    touchedDestinations.Add(destination.Id);
+                }
+                catch (Exception ex)
+                {
+                    item.Error = ex is TorryUserException || ex is UnsafePathException ? ex.Message : DiskErrors.Describe(ex);
+                }
+            }
+
+            // Les autres destinations inaccessibles en écriture empêcheraient d'enregistrer : on les retire.
+            foreach (var destination in options.Destinations.Where(d => !touchedDestinations.Contains(d.Id)).ToList())
+            {
+                if (FileManager.CheckWritable(destination.Path) != null)
+                {
+                    options.Destinations.Remove(destination);
+                    view.RemovedDestinations.Add(destination.Name);
+                }
+            }
+
+            await UpdateOptionsAsync(options).ConfigureAwait(false);
+            view.Options = Options;
+            var ok = view.Libraries.Count(l => l.Error == null);
+            view.Message = ok + " bibliothèque(s) prête(s)" + (ok < view.Libraries.Count ? ", " + (view.Libraries.Count - ok) + " en erreur" : string.Empty) + ".";
+            return view;
+        }
+
         /// <summary>
         /// Avant un déplacement : refuse si une tâche finalise les fichiers concernés, et arrête le partage des tâches
         /// dont des fichiers vont être déplacés (le moteur ne peut plus les lire à l'ancien emplacement).

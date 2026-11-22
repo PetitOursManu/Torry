@@ -29,6 +29,9 @@ namespace PetitOurs.Torry.Core
 
         /// <summary>Bibliothèques Emby (nom, type de contenu, emplacements), pour préremplir les destinations.</summary>
         IReadOnlyList<LibraryInfo> GetLibraries();
+
+        /// <summary>Ajoute un emplacement (dossier existant) à une bibliothèque Emby existante, sans l'analyser.</summary>
+        void AddLibraryLocation(string libraryName, string path);
     }
 
     public sealed class LibraryRefreshResult
@@ -48,6 +51,8 @@ namespace PetitOurs.Torry.Core
             new LibraryRefreshResult { Refreshed = false, Message = "Bibliothèque Emby indisponible." };
 
         public IReadOnlyList<LibraryInfo> GetLibraries() => Array.Empty<LibraryInfo>();
+
+        public void AddLibraryLocation(string libraryName, string path) => throw new InvalidOperationException("Bibliothèque Emby indisponible.");
     }
 
     public sealed class NullLog : ITorryLog

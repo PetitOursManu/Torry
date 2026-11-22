@@ -102,6 +102,12 @@ namespace PetitOurs.Torry.Api
     {
     }
 
+    [Route("/Torry/Libraries/Prepare", "POST", Summary = "Crée un dossier accessible en écriture par bibliothèque Emby et l'y ajoute comme emplacement")]
+    [Authenticated(Roles = "admin")]
+    public class PrepareTorryLibraries : IReturn<PrepareLibrariesView>
+    {
+    }
+
     [Route("/Torry/Files", "GET", Summary = "Contenu d'un dossier (racine + chemin relatif)")]
     [Authenticated(Roles = "admin")]
     public class GetTorryFiles : IReturn<DirectoryListingView>
@@ -282,6 +288,23 @@ namespace PetitOurs.Torry.Api
             return Manager().GetLibraries();
         }
 
+        public async Task<object> Post(PrepareTorryLibraries request)
+        {
+            AssertAdministrator();
+            PrepareLibrariesView view;
+            try
+            {
+                view = await Manager().PrepareLibrariesAsync().ConfigureAwait(false);
+            }
+            catch (TorryUserException ex)
+            {
+                throw new ArgumentException(ex.Message);
+            }
+
+            Persist(view.Options);
+            return view;
+        }
+
         public object Get(GetTorryFiles request) => Guard(() => Files().List(request.Root, request.Path));
 
         public object Get(AnalyzeTorryFile request) => Guard(() => Files().Analyze(request.Root, request.Path));
@@ -331,6 +354,12 @@ namespace PetitOurs.Torry.Api
                 throw new ArgumentException(ex.Message);
             }
 
+            return Persist(options);
+        }
+
+        /// <summary>Enregistre les réglages dans la configuration du plugin (fichier XML d'Emby).</summary>
+        private static TorryOptions Persist(TorryOptions options)
+        {
             var plugin = Plugin.Instance;
             plugin.Configuration.CopyFrom(options);
             try

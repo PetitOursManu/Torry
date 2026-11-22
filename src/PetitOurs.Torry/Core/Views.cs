@@ -50,6 +50,9 @@ namespace PetitOurs.Torry.Core
 
         public string FinalFolder { get; set; }
 
+        /// <summary>Destination choisie (nom), null = téléchargements terminés.</summary>
+        public string DestinationName { get; set; }
+
         public DateTime AddedUtc { get; set; }
 
         public DateTime? CompletedUtc { get; set; }
@@ -122,6 +125,107 @@ namespace PetitOurs.Torry.Core
         public EngineView Engine { get; set; } = new EngineView();
 
         public List<TaskView> Tasks { get; set; } = new List<TaskView>();
+
+        /// <summary>Racines navigables : « Téléchargements terminés » puis les destinations configurées.</summary>
+        public List<RootView> Roots { get; set; } = new List<RootView>();
+    }
+
+    /// <summary>Racine navigable dans l'explorateur de fichiers et utilisable comme destination.</summary>
+    public sealed class RootView
+    {
+        /// <summary>« complete » pour les téléchargements terminés, sinon l'identifiant de la destination.</summary>
+        public string Id { get; set; }
+
+        public string Name { get; set; }
+
+        /// <summary>Type de contenu Emby (null pour « Téléchargements terminés »).</summary>
+        public string ContentType { get; set; }
+
+        public string ContentTypeLabel { get; set; }
+
+        public string Path { get; set; }
+
+        public bool Available { get; set; }
+
+        public long? FreeBytes { get; set; }
+    }
+
+    public sealed class TaskFilesView
+    {
+        public List<FileView> Files { get; set; } = new List<FileView>();
+
+        /// <summary>Destination conseillée d'après le type des fichiers (null = téléchargements terminés).</summary>
+        public string SuggestedDestinationId { get; set; }
+
+        public string SuggestedContentType { get; set; }
+    }
+
+    public sealed class FileEntryView
+    {
+        public string Name { get; set; }
+
+        /// <summary>Chemin relatif à la racine, séparé par « / ».</summary>
+        public string Path { get; set; }
+
+        public bool IsDirectory { get; set; }
+
+        public long? Size { get; set; }
+
+        public DateTime ModifiedUtc { get; set; }
+
+        /// <summary>video, audio, image, book, subtitle, other, folder.</summary>
+        public string Category { get; set; }
+
+        /// <summary>Types de bibliothèque Emby compatibles (pour suggérer une destination).</summary>
+        public List<string> CompatibleContentTypes { get; set; } = new List<string>();
+    }
+
+    public sealed class DirectoryListingView
+    {
+        public string RootId { get; set; }
+
+        public string RootName { get; set; }
+
+        /// <summary>Chemin relatif courant (« » pour la racine).</summary>
+        public string Path { get; set; }
+
+        public List<FileEntryView> Entries { get; set; } = new List<FileEntryView>();
+
+        public bool Truncated { get; set; }
+    }
+
+    public sealed class MoveOperationView
+    {
+        public string Id { get; set; }
+
+        /// <summary>Pending, Running, Done, Error.</summary>
+        public string State { get; set; }
+
+        public string Source { get; set; }
+
+        public string Target { get; set; }
+
+        public long BytesTotal { get; set; }
+
+        public long BytesDone { get; set; }
+
+        /// <summary>Vrai si le déplacement nécessite une copie (volumes différents).</summary>
+        public bool Copying { get; set; }
+
+        public string Message { get; set; }
+
+        public DateTime StartedUtc { get; set; }
+
+        public DateTime? FinishedUtc { get; set; }
+    }
+
+    public sealed class LibraryInfo
+    {
+        public string Name { get; set; }
+
+        public string ContentType { get; set; }
+
+        public List<string> Locations { get; set; } = new List<string>();
     }
 
     public sealed class RemoveResult

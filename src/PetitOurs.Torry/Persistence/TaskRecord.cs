@@ -76,6 +76,9 @@ namespace PetitOurs.Torry.Persistence
 
         public bool SelectionConfirmed { get; set; }
 
+        /// <summary>Identifiant du dossier de destination choisi (null = téléchargements terminés).</summary>
+        public string DestinationId { get; set; }
+
         public List<TorrentFileEntry> Files { get; set; } = new List<TorrentFileEntry>();
 
         public long TotalBytes { get; set; }

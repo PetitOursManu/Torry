@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace PetitOurs.Torry.Core
 {
@@ -25,6 +26,9 @@ namespace PetitOurs.Torry.Core
         /// Actualisation immédiate (sans le délai de surveillance d'Emby) de la ou des bibliothèques contenant ce dossier.
         /// </summary>
         LibraryRefreshResult RefreshNow(string directory);
+
+        /// <summary>Bibliothèques Emby (nom, type de contenu, emplacements), pour préremplir les destinations.</summary>
+        IReadOnlyList<LibraryInfo> GetLibraries();
     }
 
     public sealed class LibraryRefreshResult
@@ -42,6 +46,8 @@ namespace PetitOurs.Torry.Core
 
         public LibraryRefreshResult RefreshNow(string directory) =>
             new LibraryRefreshResult { Refreshed = false, Message = "Bibliothèque Emby indisponible." };
+
+        public IReadOnlyList<LibraryInfo> GetLibraries() => Array.Empty<LibraryInfo>();
     }
 
     public sealed class NullLog : ITorryLog

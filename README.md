@@ -33,6 +33,48 @@ qBittorrent, ni Radarr ou Sonarr, ni service de débridage).
 - Actualisation de la bibliothèque Emby qui contient le dossier, dès que les fichiers sont disponibles.
   Le bouton **« Actualiser la bibliothèque »** de l'onglet Téléchargements force une analyse immédiate du
   dossier des téléchargements terminés. Sans lui, Emby attend environ 90 s (délai de surveillance par défaut).
+- **Dossiers de destination par type de contenu Emby** (Films, Séries, Musique, Livres…), importables en un clic
+  depuis vos bibliothèques Emby. Au choix des fichiers, Torry propose la destination adaptée au contenu.
+- **Onglet « Fichiers »** : mini explorateur pour parcourir, déplacer, renommer et créer des dossiers dans les
+  téléchargements terminés et les destinations.
+
+## Dossiers de destination et onglet « Fichiers »
+
+**Destinations.** Dans **Réglages > Dossiers de destination**, déclarez un dossier par type de contenu Emby :
+nom, type (Films, Séries, Musique, Clips musicaux, Vidéos personnelles, Photos, Livres, Livres audio, Mixte) et
+chemin. **« Importer les bibliothèques Emby »** préremplit la liste avec vos bibliothèques existantes.
+
+**Au choix des fichiers**, une liste « Destination » propose automatiquement :
+
+| Fichiers sélectionnés | Destination proposée |
+|---|---|
+| Vidéos dont les noms contiennent `S01E02`, `1x02`, « Saison 1 »… | Séries |
+| Autres vidéos | Films |
+| Audio (`.mp3`, `.flac`…) | Musique (`.m4b` : Livres audio) |
+| Images | Photos |
+| `.epub`, `.pdf`, `.cbz`… | Livres |
+
+Si aucune destination ne correspond, les fichiers vont dans `complete/`. Le torrent est alors finalisé
+directement dans `<destination>/<Nom du torrent>/` : il n'y a pas d'étape intermédiaire.
+
+**Onglet « Fichiers ».** Un explorateur limité au dossier des téléchargements terminés et aux destinations :
+
+- naviguer, créer un dossier, **renommer**, **déplacer** un fichier ou un dossier. La fenêtre de déplacement
+  indique les destinations compatibles avec le type du fichier ;
+- les déplacements s'exécutent **en arrière-plan, un par un**, avec leur progression. Sur un même volume, c'est
+  un renommage instantané. Entre deux volumes Docker, c'est une copie suivie de la suppression de l'original ;
+  en cas d'échec, la copie partielle est supprimée et l'original reste intact ;
+- rien n'est jamais écrasé : en cas de collision, `Nom (2)`, `Nom (3)`… ;
+- la bibliothèque d'origine et celle d'arrivée sont actualisées tout de suite ;
+- un fichier encore **en partage** peut être déplacé : son partage est alors arrêté, et la tâche suit le dossier
+  déplacé (la suppression avec fichiers reste possible) ;
+- l'explorateur ne supprime pas de fichiers, ne suit pas les liens symboliques et refuse tout chemin hors des
+  racines (`..`, chemins absolus).
+
+> Pour des déplacements instantanés, les dossiers doivent être sur **le même montage Docker**. Par exemple,
+> montez un seul dossier hôte `/srv/media` sur `/media`, avec `/media/downloads/incomplete`,
+> `/media/downloads/complete`, `/media/films` et `/media/series`. Deux montages distincts imposent une copie,
+> même s'ils sont sur le même disque.
 
 ## Comment les fichiers sont gérés
 
@@ -151,7 +193,7 @@ docker exec "$CONTAINER" grep -i "torry" /config/logs/embyserver.txt | tail -3
 Vous devez voir :
 
 ```
-Info App: Loading PetitOurs.Torry, Version=0.2.0.0 ... from /config/plugins/PetitOurs.Torry.dll
+Info App: Loading PetitOurs.Torry, Version=0.3.0.0 ... from /config/plugins/PetitOurs.Torry.dll
 Info Torry: Torry démarré : 0 tâche(s), port BitTorrent 6881.
 ```
 
@@ -174,8 +216,14 @@ Torry n'écoute sur 6881 que pendant qu'un torrent est en téléchargement ou en
    Dans l'onglet **Réglages**, les valeurs par défaut conviennent : `/downloads/incomplete`,
    `/downloads/complete`, port 6881. Cliquez sur **Enregistrer** : Torry revérifie les dossiers, et les
    avertissements disparaissent si tout est correct.
-4. Collez un lien magnet ou importez un `.torrent`, choisissez les fichiers, puis lancez le téléchargement.
-5. Pendant que ce torrent est actif, [testez le port](#tester-le-port-bittorrent).
+4. Facultatif : dans **Réglages > Dossiers de destination**, cliquez sur **« Importer les bibliothèques Emby »**.
+   Les volumes `/movies` et `/tvshows` du modèle Coolify deviennent alors des destinations « Films » et
+   « Séries ». Ce sont des montages distincts de `/downloads` : y envoyer un torrent ou y déplacer un fichier
+   implique une **copie**. Pour des déplacements instantanés, voir
+   [Dossiers de destination](#dossiers-de-destination-et-onglet-fichiers).
+5. Collez un lien magnet ou importez un `.torrent`, choisissez les fichiers et la destination, puis lancez
+   le téléchargement.
+6. Pendant que ce torrent est actif, [testez le port](#tester-le-port-bittorrent).
 
 ### Tester le port BitTorrent
 

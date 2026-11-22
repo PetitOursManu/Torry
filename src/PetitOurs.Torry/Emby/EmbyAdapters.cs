@@ -120,6 +120,18 @@ namespace PetitOurs.Torry.Emby
             return null;
         }
 
+        public IReadOnlyList<LibraryInfo> GetLibraries()
+        {
+            return _libraryManager.GetVirtualFolders()
+                .Select(f => new LibraryInfo
+                {
+                    Name = f.Name,
+                    ContentType = string.IsNullOrEmpty(f.CollectionType) ? "mixed" : f.CollectionType,
+                    Locations = (f.Locations ?? Array.Empty<string>()).ToList()
+                })
+                .ToList();
+        }
+
         public bool IsInLibrary(string path)
         {
             return _libraryManager.GetVirtualFolders()

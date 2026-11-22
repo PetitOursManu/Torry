@@ -142,6 +142,11 @@ namespace PetitOurs.Torry.Tests
                 ? new LibraryRefreshResult { Refreshed = true, Message = "Actualisation lancée : Films." }
                 : new LibraryRefreshResult { Refreshed = false, Message = "Aucune bibliothèque." };
         }
+
+        public IReadOnlyList<LibraryInfo> GetLibraries() => new[]
+        {
+            new LibraryInfo { Name = "Films", ContentType = "movies", Locations = new List<string> { "/media/films" } }
+        };
     }
 
     internal sealed class ListLog : ITorryLog

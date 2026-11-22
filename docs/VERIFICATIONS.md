@@ -109,6 +109,37 @@ Note : cette empreinte est celle de la version vérifiée ce jour-là. La DLL pu
 (licence MIT, indicateur d'écoute du port), son empreinte a donc changé. `./build.sh` affiche celle de la
 version courante.
 
+## 5 quater. Destinations et explorateur de fichiers (version 0.3.0)
+
+**Tests automatisés** (88 au total, tous réussis) :
+- détection du type de contenu : films, séries (`S01E02`, « Saison 1 »), musique, livres audio, livres ;
+  destination conseillée ;
+- validation des destinations : doublons, type inconnu, destination dans « en cours » refusée, identifiant
+  dangereux refusé ;
+- explorateur : `..` refusé, chemin absolu ramené à la racine, liens symboliques masqués et refusés, dossier
+  déplacé dans lui-même refusé, collisions `(2)` ;
+- déplacement d'un dossier entre deux systèmes de fichiers réellement distincts (`/dev/shm` tmpfs → overlay
+  `/tmp` du conteneur SDK) : copie avec progression, SHA-256 identique, original supprimé ;
+- essaim local réel : torrent finalisé directement dans la destination « Films », puis dossier déplacé vers
+  « Archives » pendant le partage. Le partage s'arrête, la tâche suit le dossier, la bibliothèque est
+  notifiée, et la suppression avec fichiers efface bien le nouvel emplacement.
+
+**Dans `lscr.io/linuxserver/emby:4.10.2`** (image du modèle Coolify), avec les bibliothèques Films
+(`/media/films`) et Séries (`/media/series`) sur un volume Docker, et `/downloads` en tmpfs :
+
+| Vérification | Résultat |
+|---|---|
+| `GET /Torry/Libraries` | Films (movies) et Séries (tvshows) avec leurs emplacements |
+| Enregistrement des destinations | Persistées dans `PetitOurs.Torry.xml`. Un accent saisi dans l'interface est stocké en UTF-8 correct |
+| Racines dans le statut | Téléchargements terminés, Films et Séries, toutes disponibles |
+| Déplacement `/downloads/complete` → `/media/films` (volumes différents) | Copie avec progression (52 618 / 52 618 octets), SHA-256 identique, original supprimé, film visible dans Emby |
+| Traversée `..` et racine inconnue | HTTP 400, « Chemin refusé (remontée de dossier (..)) » |
+| Nouvelles routes sans jeton / non administrateur | 401 / 403 pour `Files`, `Files/Operations`, `Libraries`, `Files/Move`, `Files/Folder` |
+| Interface : onglet Fichiers | Navigation, icônes, fenêtre de déplacement avec destinations compatibles, déplacement vers « Films › A trier », liste actualisée |
+| Interface : choix des fichiers d'un torrent `Saison 1/… S01E01.mkv` | Destination « Séries » présélectionnée |
+| Redémarrage d'Emby | Tâche et destinations conservées |
+| Problème trouvé | DLL montée dans un conteneur neuf : `/config/plugins` appartient à `root`, et l'enregistrement des réglages échoue (HTTP 500). Torry affiche maintenant un message explicite ; documenté |
+
 ## 5 ter. Bouton « Actualiser la bibliothèque » (version 0.2.0)
 
 Vérifié dans `lscr.io/linuxserver/emby:4.10.2` (image du modèle Coolify), avec une bibliothèque Films sur

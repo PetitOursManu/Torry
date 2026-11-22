@@ -51,6 +51,23 @@
             .torryPage .torry-file-size { opacity: .75; white-space: nowrap; font-size: .9em; }
             .torryPage .torry-dialog-foot { display: flex; justify-content: space-between; gap: .6em; align-items: center; flex-wrap: wrap; margin-top: .4em; }
             .torryPage .torry-legal { font-size: .8em; opacity: .55; margin-top: 2em; }
+            .torryPage .torry-crumbs { display: flex; flex-wrap: wrap; gap: .2em; align-items: center; margin: .6em 0; font-size: .95em; }
+            .torryPage .torry-crumbs button { border: 0; background: none; color: inherit; cursor: pointer; padding: .2em .35em; border-radius: .3em; font: inherit; }
+            .torryPage .torry-crumbs button:hover { background: rgba(128,128,128,.2); }
+            .torryPage .torry-fs { border: 1px solid rgba(128,128,128,.3); border-radius: .5em; overflow: hidden; }
+            .torryPage .torry-fs-row { display: flex; align-items: center; gap: .6em; padding: .45em .7em; border-bottom: 1px solid rgba(128,128,128,.15); }
+            .torryPage .torry-fs-row:last-child { border-bottom: 0; }
+            .torryPage .torry-fs-row:hover { background: rgba(128,128,128,.08); }
+            .torryPage .torry-fs-name { flex: 1; min-width: 0; word-break: break-word; }
+            .torryPage .torry-fs-name button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; padding: 0; text-align: left; font-weight: 600; }
+            .torryPage .torry-fs-meta { opacity: .7; font-size: .85em; white-space: nowrap; }
+            .torryPage .torry-fs-icon { opacity: .75; font-size: 1.3em; width: 1.3em; text-align: center; }
+            .torryPage .torry-dest-row { display: grid; grid-template-columns: 1.2fr 1fr 2fr auto; gap: .5em; margin-bottom: .5em; align-items: center; }
+            .torryPage select.torry-input { appearance: auto; }
+            .torryPage .torry-dialog .torry-input { background: rgba(255,255,255,.06); color: #eee; }
+            .torryPage .torry-dialog select.torry-input option { color: #000; }
+            .torryPage .torry-pick { max-height: 40vh; }
+            @media (max-width: 40em) { .torryPage .torry-dest-row { grid-template-columns: 1fr; } .torryPage .torry-fs-meta { display: none; } }
         </style>
 
         <div class="torry-wrap">
@@ -59,6 +76,7 @@
 
             <div class="torry-tabs" role="tablist">
                 <button type="button" class="torry-tab" role="tab" data-tab="downloads" aria-selected="true">Téléchargements</button>
+                <button type="button" class="torry-tab" role="tab" data-tab="files" aria-selected="false">Fichiers</button>
                 <button type="button" class="torry-tab" role="tab" data-tab="settings" aria-selected="false">Réglages</button>
             </div>
 
@@ -85,6 +103,26 @@
                 </div>
                 <div class="torry-engine"></div>
                 <div class="torry-tasks"></div>
+            </section>
+
+            <!-- Onglet fichiers -->
+            <section class="torry-panel" data-panel="files" hidden>
+                <div class="torry-row">
+                    <div class="torry-grow">
+                        <label for="torryFsRoot" style="display:block;margin-bottom:.3em;">Dossier</label>
+                        <select id="torryFsRoot" class="torry-input torry-fs-root"></select>
+                    </div>
+                    <div class="torry-row" style="align-self:flex-end;">
+                        <button type="button" class="torry-btn torry-btn-small torry-fs-mkdir">Nouveau dossier</button>
+                        <button type="button" class="torry-btn torry-btn-small torry-fs-reload">Actualiser</button>
+                    </div>
+                </div>
+                <div class="torry-crumbs torry-fs-crumbs"></div>
+                <div class="torry-fs-message"></div>
+                <div class="torry-fs torry-fs-list"></div>
+                <div class="torry-help" style="font-size:.85em;opacity:.7;margin-top:.6em;">Seuls le dossier des téléchargements terminés et les dossiers de destination (onglet Réglages) sont accessibles. Les fichiers en cours de partage peuvent être déplacés : leur partage est alors arrêté.</div>
+                <h3 style="margin:1.4em 0 .6em;font-size:1.05em;">Déplacements</h3>
+                <div class="torry-fs-ops"><div class="torry-empty" style="padding:.6em 0;">Aucun déplacement récent.</div></div>
             </section>
 
             <!-- Onglet réglages -->
@@ -147,6 +185,14 @@
                     </div>
                     <div class="torry-help" style="font-size:.85em;opacity:.7;margin-bottom:1em;">Le partage s'arrête dès que l'une des limites est atteinte. Si les deux valent 0, il continue jusqu'à arrêt manuel.</div>
 
+                    <h3>Dossiers de destination</h3>
+                    <div class="torry-help" style="font-size:.85em;opacity:.7;margin-bottom:.8em;">Un dossier par type de contenu Emby (Films, Séries, Musique…). Au choix des fichiers, Torry propose la destination adaptée ; l'onglet Fichiers permet ensuite de déplacer. Chemins vus par le conteneur Emby. Pour des déplacements instantanés, placez-les sur le même volume Docker que le dossier « en cours ».</div>
+                    <div class="torry-dests"></div>
+                    <div class="torry-row" style="margin-bottom:1em;">
+                        <button type="button" class="torry-btn torry-btn-small torry-dest-add">Ajouter un dossier</button>
+                        <button type="button" class="torry-btn torry-btn-small torry-dest-import">Importer les bibliothèques Emby</button>
+                    </div>
+
                     <h3>Bibliothèque et automatismes</h3>
                     <label class="torry-check"><input type="checkbox" name="RefreshLibraryOnComplete" /> Demander l'actualisation de la bibliothèque quand des fichiers sont disponibles</label>
                     <label class="torry-check"><input type="checkbox" name="AutoStartAfterMetadata" /> Démarrer automatiquement avec tous les fichiers (sans écran de sélection)</label>
@@ -169,11 +215,54 @@
                     <button type="button" class="torry-btn torry-btn-small torry-sel-video">Vidéos uniquement</button>
                 </div>
                 <div class="torry-files"></div>
+                <div class="torry-row" style="margin:.2em 0 .6em;">
+                    <label for="torryDestination" style="white-space:nowrap;">Destination</label>
+                    <div class="torry-grow"><select id="torryDestination" class="torry-input torry-files-destination"></select></div>
+                </div>
                 <div class="torry-dialog-foot">
                     <div class="torry-files-summary"></div>
                     <div class="torry-row">
                         <button type="button" class="torry-btn torry-files-close">Plus tard</button>
                         <button type="button" class="torry-btn torry-btn-primary torry-files-start">Démarrer le téléchargement</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fenêtre : déplacement -->
+        <div class="torry-modal torry-move-modal" hidden>
+            <div class="torry-dialog" role="dialog" aria-modal="true" aria-labelledby="torryMoveTitle">
+                <h2 id="torryMoveTitle" class="torry-move-title">Déplacer</h2>
+                <div class="torry-row">
+                    <label for="torryMoveRoot" style="white-space:nowrap;">Vers</label>
+                    <div class="torry-grow"><select id="torryMoveRoot" class="torry-input torry-move-root"></select></div>
+                </div>
+                <div class="torry-note torry-move-hint"></div>
+                <div class="torry-crumbs torry-move-crumbs"></div>
+                <div class="torry-files torry-pick torry-move-folders"></div>
+                <div class="torry-field">
+                    <label for="torryMoveName">Nom</label>
+                    <input id="torryMoveName" class="torry-input torry-move-name" type="text" autocomplete="off" spellcheck="false" />
+                </div>
+                <div class="torry-dialog-foot">
+                    <div class="torry-note torry-move-target"></div>
+                    <div class="torry-row">
+                        <button type="button" class="torry-btn torry-move-cancel">Annuler</button>
+                        <button type="button" class="torry-btn torry-btn-primary torry-move-ok">Déplacer ici</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Fenêtre : saisie (renommer, nouveau dossier) -->
+        <div class="torry-modal torry-prompt-modal" hidden>
+            <div class="torry-dialog" role="dialog" aria-modal="true" aria-labelledby="torryPromptTitle" style="max-width:30em;">
+                <h2 id="torryPromptTitle" class="torry-prompt-title"></h2>
+                <input class="torry-input torry-prompt-input" type="text" autocomplete="off" spellcheck="false" />
+                <div class="torry-dialog-foot" style="justify-content:flex-end;margin-top:1em;">
+                    <div class="torry-row">
+                        <button type="button" class="torry-btn torry-prompt-cancel">Annuler</button>
+                        <button type="button" class="torry-btn torry-btn-primary torry-prompt-ok">Valider</button>
                     </div>
                 </div>
             </div>

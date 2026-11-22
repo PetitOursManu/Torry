@@ -1,4 +1,7 @@
+using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using PetitOurs.Torry.Files;
 
 namespace PetitOurs.Torry.Core
@@ -41,7 +44,20 @@ namespace PetitOurs.Torry.Core
 
         public bool RefreshLibraryOnComplete { get; set; } = true;
 
-        public TorryOptions Clone() => (TorryOptions)MemberwiseClone();
+        /// <summary>Dossiers de destination par type de contenu (bibliothèques Emby). Vide = tout va dans « terminés ».</summary>
+        public List<DestinationFolder> Destinations { get; set; } = new List<DestinationFolder>();
+
+        public const int MaxDestinations = 30;
+
+        public TorryOptions Clone()
+        {
+            var copy = (TorryOptions)MemberwiseClone();
+            copy.Destinations = (Destinations ?? new List<DestinationFolder>()).Select(d => d.Clone()).ToList();
+            return copy;
+        }
+
+        public DestinationFolder FindDestination(string id) =>
+            string.IsNullOrEmpty(id) ? null : (Destinations ?? new List<DestinationFolder>()).FirstOrDefault(d => string.Equals(d.Id, id, StringComparison.Ordinal));
 
         public List<string> Validate()
         {
@@ -81,7 +97,67 @@ namespace PetitOurs.Torry.Core
                 errors.Add("La durée de partage doit être comprise entre 0 et 525 600 minutes (0 = sans limite).");
             }
 
+            errors.AddRange(ValidateDestinations());
             return errors;
+        }
+            private IEnumerable<string> ValidateDestinations()
+        {
+            var list = Destinations ?? new List<DestinationFolder>();
+            if (list.Count > MaxDestinations)
+            {
+                yield return "Trop de dossiers de destination (" + MaxDestinations + " maximum).";
+                yield break;
+            }
+
+            var ids = new HashSet<string>(StringComparer.Ordinal);
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var d in list)
+            {
+                var label = string.IsNullOrWhiteSpace(d?.Name) ? "(sans nom)" : d.Name.Trim();
+                if (d == null || string.IsNullOrWhiteSpace(d.Name))
+                {
+                    yield return "Chaque dossier de destination doit avoir un nom.";
+                    continue;
+                }
+
+                if (d.Name.Trim().Length > 60)
+                {
+                    yield return "Destination « " + label + " » : nom trop long (60 caractères maximum).";
+                }
+
+                if (!names.Add(d.Name.Trim()))
+                {
+                    yield return "Deux dossiers de destination portent le nom « " + label + " ».";
+                }
+
+                if (string.IsNullOrEmpty(d.Id) || d.Id.Length > 32 || !d.Id.All(c => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) || !ids.Add(d.Id))
+                {
+                    yield return "Destination « " + label + " » : identifiant invalide.";
+                }
+
+                if (!MediaTypes.IsKnownContentType(d.ContentType))
+                {
+                    yield return "Destination « " + label + " » : type de contenu inconnu.";
+                }
+
+                if (string.IsNullOrWhiteSpace(d.Path) || !System.IO.Path.IsPathFullyQualified(d.Path))
+                {
+                    yield return "Destination « " + label + " » : le chemin doit être absolu.";
+                    continue;
+                }
+
+                var path = PathGuard.NormalizeDirectory(d.Path);
+                if (System.IO.Path.GetPathRoot(path) == path)
+                {
+                    yield return "Destination « " + label + " » : la racine du système de fichiers est interdite.";
+                }
+
+                if (!string.IsNullOrWhiteSpace(IncompleteDirectory) && System.IO.Path.IsPathFullyQualified(IncompleteDirectory)
+                    && (PathGuard.IsSameOrInside(path, IncompleteDirectory) || PathGuard.IsSameOrInside(IncompleteDirectory, path)))
+                {
+                    yield return "Destination « " + label + " » : elle ne doit ni contenir le dossier « en cours », ni s'y trouver.";
+                }
+            }
         }
     }
 }

@@ -6,6 +6,36 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
 
     var POLL_MS = 2000;
 
+    var CONTENT_TYPES = [
+        ['movies', 'Films'], ['tvshows', 'Séries'], ['music', 'Musique'], ['musicvideos', 'Clips musicaux'],
+        ['homevideos', 'Vidéos personnelles et photos'], ['photos', 'Photos'], ['books', 'Livres'],
+        ['audiobooks', 'Livres audio'], ['mixed', 'Contenu mixte']
+    ];
+
+    var ICONS = { folder: 'folder', video: 'movie', audio: 'music_note', image: 'image', book: 'menu_book', subtitle: 'subtitles', other: 'description' };
+
+    function contentTypeLabel(type) {
+        for (var i = 0; i < CONTENT_TYPES.length; i++) {
+            if (CONTENT_TYPES[i][0] === type) {
+                return CONTENT_TYPES[i][1];
+            }
+        }
+        return 'Contenu mixte';
+    }
+
+    function joinPath(a, b) {
+        return a ? (b ? a + '/' + b : a) : (b || '');
+    }
+
+    function parentPath(path) {
+        var i = (path || '').lastIndexOf('/');
+        return i < 0 ? '' : path.substring(0, i);
+    }
+
+    function newId() {
+        return Math.random().toString(36).substring(2, 10) + Date.now().toString(36).substring(4);
+    }
+
     function escapeHtml(value) {
         return String(value == null ? '' : value)
             .replace(/&/g, '&amp;')
@@ -144,6 +174,9 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         if (task.IsPrivate) {
             meta.push('tracker privé');
         }
+        if (task.DestinationName) {
+            meta.push('→ ' + task.DestinationName);
+        }
         html += '<div class="torry-meta">' + meta.map(function (m) { return '<span>' + escapeHtml(m) + '</span>'; }).join('') + '</div>';
 
         if (task.ErrorMessage) {
@@ -269,10 +302,87 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         view.querySelector('.torry-delete-cancel').addEventListener('click', function () { deleteModal.hidden = true; });
         view.querySelector('.torry-delete-ok').addEventListener('click', function () { instance.confirmDelete(); });
 
+        // Explorateur de fichiers
+        this.fs = { root: null, path: '' };
+        view.querySelector('.torry-fs-root').addEventListener('change', function (e) {
+            instance.browse(e.target.value, '');
+        });
+        view.querySelector('.torry-fs-reload').addEventListener('click', function () { instance.browse(instance.fs.root, instance.fs.path); });
+        view.querySelector('.torry-fs-mkdir').addEventListener('click', function () { instance.createFolder(); });
+        view.querySelector('.torry-fs-crumbs').addEventListener('click', function (e) {
+            var b = e.target.closest('button[data-path]');
+            if (b) {
+                instance.browse(instance.fs.root, b.getAttribute('data-path'));
+            }
+        });
+        view.querySelector('.torry-fs-list').addEventListener('click', function (e) {
+            var b = e.target.closest('button[data-fs]');
+            if (!b) {
+                return;
+            }
+            var path = b.getAttribute('data-path');
+            var action = b.getAttribute('data-fs');
+            if (action === 'open') {
+                instance.browse(instance.fs.root, path);
+            } else if (action === 'move') {
+                instance.openMove(path);
+            } else if (action === 'rename') {
+                instance.renameEntry(path);
+            }
+        });
+
+        // Fenêtre de déplacement
+        var moveModal = view.querySelector('.torry-move-modal');
+        view.querySelector('.torry-move-cancel').addEventListener('click', function () { moveModal.hidden = true; });
+        view.querySelector('.torry-move-root').addEventListener('change', function (e) { instance.browseMoveTarget(e.target.value, ''); });
+        view.querySelector('.torry-move-crumbs').addEventListener('click', function (e) {
+            var b = e.target.closest('button[data-path]');
+            if (b) {
+                instance.browseMoveTarget(instance.move.root, b.getAttribute('data-path'));
+            }
+        });
+        view.querySelector('.torry-move-folders').addEventListener('click', function (e) {
+            var b = e.target.closest('button[data-path]');
+            if (b) {
+                instance.browseMoveTarget(instance.move.root, b.getAttribute('data-path'));
+            }
+        });
+        view.querySelector('.torry-move-name').addEventListener('input', function () { instance.updateMoveTarget(); });
+        view.querySelector('.torry-move-ok').addEventListener('click', function () { instance.confirmMove(); });
+
+        // Fenêtre de saisie
+        var promptModal = view.querySelector('.torry-prompt-modal');
+        view.querySelector('.torry-prompt-cancel').addEventListener('click', function () { instance.closePrompt(null); });
+        view.querySelector('.torry-prompt-ok').addEventListener('click', function () {
+            instance.closePrompt(view.querySelector('.torry-prompt-input').value);
+        });
+        view.querySelector('.torry-prompt-input').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                instance.closePrompt(e.target.value);
+            }
+        });
+
+        // Dossiers de destination (réglages)
+        view.querySelector('.torry-dest-add').addEventListener('click', function () {
+            instance.addDestinationRow({ Id: newId(), Name: '', ContentType: 'movies', Path: '' });
+        });
+        view.querySelector('.torry-dest-import').addEventListener('click', function () { instance.importLibraries(); });
+        view.querySelector('.torry-dests').addEventListener('click', function (e) {
+            var b = e.target.closest('button[data-dest-remove]');
+            if (b) {
+                b.closest('.torry-dest-row').remove();
+            }
+        });
+
         view.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
                 filesModal.hidden = true;
                 deleteModal.hidden = true;
+                moveModal.hidden = true;
+                if (!promptModal.hidden) {
+                    instance.closePrompt(null);
+                }
             }
         });
     }
@@ -313,6 +423,12 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
         view.querySelectorAll('.torry-panel').forEach(function (panel) {
             panel.hidden = panel.getAttribute('data-panel') !== name;
         });
+        this.activeTab = name;
+        if (name === 'files') {
+            this.renderRootSelect(this.view.querySelector('.torry-fs-root'), this.fs.root);
+            this.browse(this.fs.root || (this.roots && this.roots[0] && this.roots[0].Id), this.fs.path || '');
+            this.refreshOperations();
+        }
     };
 
     View.prototype.notify = function (message, isError) {
@@ -331,6 +447,10 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
     View.prototype.refresh = function () {
         var instance = this;
         return api('GET', 'Torry/Status').then(function (status) {
+            instance.roots = status.Roots || [];
+            if (instance.activeTab === 'files') {
+                instance.refreshOperations();
+            }
             var json = JSON.stringify(status);
             if (json === instance.lastStatusJson) {
                 return status;
@@ -445,9 +565,10 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
     View.prototype.openSelection = function (id, name) {
         var instance = this;
         loading.show();
-        api('GET', 'Torry/Tasks/' + encodeURIComponent(id) + '/Files').then(function (files) {
+        api('GET', 'Torry/Tasks/' + encodeURIComponent(id) + '/Files').then(function (result) {
             instance.selectTaskId = id;
-            instance.files = files || [];
+            instance.files = (result && result.Files) || [];
+            instance.renderDestinationSelect(result && result.SuggestedDestinationId, result && result.SuggestedContentType);
             instance.view.querySelector('.torry-files-title').textContent = 'Choisir les fichiers — ' + (name || '');
             instance.view.querySelector('.torry-files').innerHTML = instance.files.map(function (f) {
                 return '<label class="torry-file"><input type="checkbox" data-index="' + f.Index + '"' + (f.Selected ? ' checked' : '') + ' />'
@@ -500,7 +621,8 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
             return;
         }
         loading.show();
-        api('POST', 'Torry/Tasks/' + encodeURIComponent(this.selectTaskId) + '/Start', { SelectedFiles: indices.join(',') }).then(function () {
+        var destination = this.view.querySelector('.torry-files-destination').value || '';
+        api('POST', 'Torry/Tasks/' + encodeURIComponent(this.selectTaskId) + '/Start', { SelectedFiles: indices.join(','), DestinationId: destination }).then(function () {
             instance.view.querySelector('.torry-files-modal').hidden = true;
             return instance.refresh();
         }, function (err) {
@@ -556,7 +678,9 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
 
     View.prototype.loadSettings = function () {
         var form = this.view.querySelector('.torry-settings-form');
+        var instance = this;
         return api('GET', 'Torry/Settings').then(function (settings) {
+            instance.renderDestinationRows(settings.Destinations || []);
             Object.keys(settings).forEach(function (key) {
                 var field = form.elements[key];
                 if (!field) {
@@ -588,6 +712,7 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
                 body[field.name] = field.value.trim();
             }
         });
+        body.DestinationsJson = JSON.stringify(this.collectDestinations());
         loading.show();
         api('POST', 'Torry/Settings', body).then(function () {
             message.innerHTML = '<div class="torry-warn">Réglages enregistrés et appliqués.</div>';
@@ -598,6 +723,340 @@ define(['baseView', 'loading', 'emby-scroller'], function (BaseView, loading) {
                 message.innerHTML = '<div class="torry-error">' + escapeHtml(m) + '</div>';
             });
         }).then(function () { loading.hide(); });
+    };
+
+    // ---- destinations (sélection des fichiers)
+
+    View.prototype.destinationRoots = function () {
+        return (this.roots || []).filter(function (r) { return r.Id !== 'complete'; });
+    };
+
+    View.prototype.renderDestinationSelect = function (suggestedId, suggestedType) {
+        var select = this.view.querySelector('.torry-files-destination');
+        var html = '<option value="">Téléchargements terminés</option>';
+        this.destinationRoots().forEach(function (r) {
+            html += '<option value="' + escapeHtml(r.Id) + '">' + escapeHtml(r.Name + ' (' + (r.ContentTypeLabel || '') + ')') + '</option>';
+        });
+        select.innerHTML = html;
+        select.value = suggestedId || '';
+        select.title = suggestedType ? 'Type détecté : ' + contentTypeLabel(suggestedType) : '';
+    };
+
+    View.prototype.renderRootSelect = function (select, selected) {
+        var html = '';
+        (this.roots || []).forEach(function (r) {
+            var label = r.Name + (r.ContentTypeLabel ? ' (' + r.ContentTypeLabel + ')' : '') + (r.Available ? '' : ' — introuvable');
+            html += '<option value="' + escapeHtml(r.Id) + '">' + escapeHtml(label) + '</option>';
+        });
+        select.innerHTML = html;
+        if (selected) {
+            select.value = selected;
+        }
+    };
+
+    // ---- explorateur de fichiers
+
+    View.prototype.browse = function (rootId, path) {
+        var instance = this;
+        if (!rootId) {
+            return Promise.resolve();
+        }
+        this.fs.root = rootId;
+        this.fs.path = path || '';
+        this.view.querySelector('.torry-fs-root').value = rootId;
+        var message = this.view.querySelector('.torry-fs-message');
+        return api('GET', 'Torry/Files?Root=' + encodeURIComponent(rootId) + '&Path=' + encodeURIComponent(this.fs.path)).then(function (listing) {
+            message.innerHTML = '';
+            instance.listing = listing;
+            instance.renderCrumbs(instance.view.querySelector('.torry-fs-crumbs'), listing.RootName, listing.Path);
+            instance.renderListing(listing);
+        }, function (err) {
+            return readError(err).then(function (m) {
+                message.innerHTML = '<div class="torry-error">' + escapeHtml(m) + '</div>';
+                instance.view.querySelector('.torry-fs-list').innerHTML = '';
+            });
+        });
+    };
+
+    View.prototype.renderCrumbs = function (container, rootName, path) {
+        var html = '<button type="button" data-path="">' + escapeHtml(rootName) + '</button>';
+        var acc = '';
+        (path ? path.split('/') : []).forEach(function (part) {
+            acc = joinPath(acc, part);
+            html += '<span>›</span><button type="button" data-path="' + escapeHtml(acc) + '">' + escapeHtml(part) + '</button>';
+        });
+        container.innerHTML = html;
+    };
+
+    View.prototype.renderListing = function (listing) {
+        var html = '';
+        if (listing.Path) {
+            html += '<div class="torry-fs-row"><i class="md-icon torry-fs-icon">arrow_upward</i><div class="torry-fs-name"><button type="button" data-fs="open" data-path="'
+                + escapeHtml(parentPath(listing.Path)) + '">Dossier parent</button></div></div>';
+        }
+        (listing.Entries || []).forEach(function (e) {
+            var name = e.IsDirectory
+                ? '<button type="button" data-fs="open" data-path="' + escapeHtml(e.Path) + '">' + escapeHtml(e.Name) + '</button>'
+                : escapeHtml(e.Name);
+            var meta = e.IsDirectory ? '' : formatBytes(e.Size);
+            html += '<div class="torry-fs-row">'
+                + '<i class="md-icon torry-fs-icon">' + (ICONS[e.Category] || 'description') + '</i>'
+                + '<div class="torry-fs-name">' + name + '</div>'
+                + '<div class="torry-fs-meta">' + escapeHtml(meta) + '</div>'
+                + '<button type="button" class="torry-btn torry-btn-small" data-fs="move" data-path="' + escapeHtml(e.Path) + '">Déplacer…</button>'
+                + '<button type="button" class="torry-btn torry-btn-small" data-fs="rename" data-path="' + escapeHtml(e.Path) + '">Renommer…</button>'
+                + '</div>';
+        });
+        if (!(listing.Entries || []).length) {
+            html += '<div class="torry-empty" style="padding:1em;">Dossier vide.</div>';
+        }
+        if (listing.Truncated) {
+            html += '<div class="torry-note" style="padding:.5em .7em;">Liste tronquée (2000 éléments maximum).</div>';
+        }
+        this.view.querySelector('.torry-fs-list').innerHTML = html;
+    };
+
+    View.prototype.findEntry = function (path) {
+        return ((this.listing && this.listing.Entries) || []).filter(function (e) { return e.Path === path; })[0];
+    };
+
+    View.prototype.prompt = function (title, value) {
+        var instance = this;
+        var modal = this.view.querySelector('.torry-prompt-modal');
+        var input = this.view.querySelector('.torry-prompt-input');
+        this.view.querySelector('.torry-prompt-title').textContent = title;
+        input.value = value || '';
+        modal.hidden = false;
+        setTimeout(function () { input.focus(); input.select(); }, 50);
+        return new Promise(function (resolve) { instance.promptResolve = resolve; });
+    };
+
+    View.prototype.closePrompt = function (value) {
+        this.view.querySelector('.torry-prompt-modal').hidden = true;
+        var resolve = this.promptResolve;
+        this.promptResolve = null;
+        if (resolve) {
+            resolve(value == null ? null : String(value).trim());
+        }
+    };
+
+    View.prototype.createFolder = function () {
+        var instance = this;
+        this.prompt('Nouveau dossier', '').then(function (name) {
+            if (!name) {
+                return;
+            }
+            api('POST', 'Torry/Files/Folder', { Root: instance.fs.root, Path: instance.fs.path, Name: name }).then(function () {
+                return instance.browse(instance.fs.root, instance.fs.path);
+            }, function (err) {
+                return readError(err).then(function (m) { instance.notifyFiles(m, true); });
+            });
+        });
+    };
+
+    View.prototype.renameEntry = function (path) {
+        var instance = this;
+        var entry = this.findEntry(path);
+        var current = entry ? entry.Name : path.split('/').pop();
+        this.prompt('Renommer « ' + current + ' »', current).then(function (name) {
+            if (!name || name === current) {
+                return;
+            }
+            instance.submitMove(instance.fs.root, path, instance.fs.root, parentPath(path), name);
+        });
+    };
+
+    View.prototype.notifyFiles = function (message, isError) {
+        var box = this.view.querySelector('.torry-fs-message');
+        box.innerHTML = '<div class="' + (isError ? 'torry-error' : 'torry-warn') + '">' + escapeHtml(message) + '</div>';
+        clearTimeout(this.fsNoticeTimer);
+        this.fsNoticeTimer = setTimeout(function () { box.innerHTML = ''; }, isError ? 12000 : 6000);
+    };
+
+    View.prototype.openMove = function (path) {
+        var entry = this.findEntry(path) || { Name: path.split('/').pop(), CompatibleContentTypes: [], IsDirectory: true };
+        this.move = { sourceRoot: this.fs.root, sourcePath: path, entry: entry, root: null, path: '' };
+        this.view.querySelector('.torry-move-title').textContent = 'Déplacer « ' + entry.Name + ' »';
+        this.view.querySelector('.torry-move-name').value = entry.Name;
+
+        // Destination conseillée : première racine dont le type accepte ce fichier.
+        var roots = this.roots || [];
+        var compatible = entry.CompatibleContentTypes || [];
+        var suggested = roots.filter(function (r) { return r.ContentType && r.ContentType !== 'mixed' && compatible.indexOf(r.ContentType) >= 0 && r.Id !== this.fs.root; }, this)[0];
+        var select = this.view.querySelector('.torry-move-root');
+        this.renderRootSelect(select, (suggested || roots[0] || {}).Id);
+        var hint = '';
+        if (!entry.IsDirectory && compatible.length) {
+            var names = roots.filter(function (r) { return r.ContentType && compatible.indexOf(r.ContentType) >= 0; }).map(function (r) { return r.Name; });
+            hint = names.length ? 'Destinations compatibles avec ce type de fichier : ' + names.join(', ') + '.' : 'Aucune destination configurée pour ce type de fichier.';
+        }
+        this.view.querySelector('.torry-move-hint').textContent = hint;
+        this.view.querySelector('.torry-move-modal').hidden = false;
+        this.browseMoveTarget(select.value, '');
+    };
+
+    View.prototype.browseMoveTarget = function (rootId, path) {
+        var instance = this;
+        this.move.root = rootId;
+        this.move.path = path || '';
+        this.view.querySelector('.torry-move-root').value = rootId;
+        var container = this.view.querySelector('.torry-move-folders');
+        return api('GET', 'Torry/Files?Root=' + encodeURIComponent(rootId) + '&Path=' + encodeURIComponent(this.move.path)).then(function (listing) {
+            instance.renderCrumbs(instance.view.querySelector('.torry-move-crumbs'), listing.RootName, listing.Path);
+            var html = '';
+            if (listing.Path) {
+                html += '<div class="torry-file"><i class="md-icon">arrow_upward</i><span class="torry-file-path"><button type="button" class="torry-btn torry-btn-small" data-path="'
+                    + escapeHtml(parentPath(listing.Path)) + '">Dossier parent</button></span></div>';
+            }
+            (listing.Entries || []).filter(function (e) { return e.IsDirectory; }).forEach(function (e) {
+                var isSelf = instance.move.sourceRoot === rootId && (e.Path === instance.move.sourcePath || e.Path.indexOf(instance.move.sourcePath + '/') === 0);
+                html += '<div class="torry-file"><i class="md-icon">folder</i><span class="torry-file-path">'
+                    + (isSelf ? escapeHtml(e.Name) : '<button type="button" class="torry-btn torry-btn-small" data-path="' + escapeHtml(e.Path) + '">' + escapeHtml(e.Name) + '</button>')
+                    + '</span></div>';
+            });
+            if (!html) {
+                html = '<div class="torry-empty" style="padding:.8em;">Aucun sous-dossier.</div>';
+            }
+            container.innerHTML = html;
+            instance.updateMoveTarget(listing.RootName);
+        }, function (err) {
+            return readError(err).then(function (m) {
+                container.innerHTML = '<div class="torry-error">' + escapeHtml(m) + '</div>';
+            });
+        });
+    };
+
+    View.prototype.updateMoveTarget = function (rootName) {
+        if (rootName) {
+            this.move.rootName = rootName;
+        }
+        var name = this.view.querySelector('.torry-move-name').value.trim();
+        var parts = [this.move.rootName || ''].concat(this.move.path ? this.move.path.split('/') : []).concat([name]);
+        this.view.querySelector('.torry-move-target').textContent = 'Vers : ' + parts.join(' › ');
+        this.view.querySelector('.torry-move-ok').disabled = !name;
+    };
+
+    View.prototype.confirmMove = function () {
+        var name = this.view.querySelector('.torry-move-name').value.trim();
+        var m = this.move;
+        this.view.querySelector('.torry-move-modal').hidden = true;
+        this.submitMove(m.sourceRoot, m.sourcePath, m.root, m.path, name === m.entry.Name ? '' : name);
+    };
+
+    View.prototype.submitMove = function (sourceRoot, sourcePath, targetRoot, targetPath, newName) {
+        var instance = this;
+        loading.show();
+        api('POST', 'Torry/Files/Move', {
+            SourceRoot: sourceRoot,
+            SourcePath: sourcePath,
+            TargetRoot: targetRoot,
+            TargetPath: targetPath,
+            NewName: newName || ''
+        }).then(function () {
+            instance.notifyFiles('Déplacement lancé. Suivez sa progression ci-dessous.');
+            instance.refreshOperations();
+        }, function (err) {
+            return readError(err).then(function (m) { instance.notifyFiles(m, true); });
+        }).then(function () { loading.hide(); });
+    };
+
+    View.prototype.refreshOperations = function () {
+        var instance = this;
+        return api('GET', 'Torry/Files/Operations').then(function (ops) {
+            ops = ops || [];
+            var json = JSON.stringify(ops);
+            if (json === instance.lastOpsJson) {
+                return;
+            }
+            var hadRunning = (instance.lastOps || []).some(function (o) { return o.State === 'Running' || o.State === 'Pending'; });
+            instance.lastOpsJson = json;
+            instance.lastOps = ops;
+            var html = ops.map(function (o) {
+                var pct = o.BytesTotal > 0 ? Math.min(100, 100 * o.BytesDone / o.BytesTotal) : (o.State === 'Done' ? 100 : 0);
+                var label = { Pending: 'En attente', Running: o.Copying ? 'Copie en cours' : 'En cours', Done: 'Terminé', Error: 'Erreur' }[o.State] || o.State;
+                return '<div class="torry-task"><div class="torry-task-head"><div class="torry-task-name">' + escapeHtml(o.Source) + '</div>'
+                    + '<span class="' + (o.State === 'Error' ? 'torry-badge torry-badge-err' : (o.State === 'Done' ? 'torry-badge torry-badge-ok' : 'torry-badge')) + '">' + escapeHtml(label) + '</span></div>'
+                    + '<div class="torry-note">→ ' + escapeHtml(o.Target) + '</div>'
+                    + (o.State === 'Running' ? '<div class="torry-bar"><div style="width:' + pct.toFixed(1) + '%"></div></div><div class="torry-meta"><span>'
+                        + escapeHtml(formatBytes(o.BytesDone) + ' / ' + formatBytes(o.BytesTotal)) + '</span></div>' : '')
+                    + (o.Message ? '<div class="' + (o.State === 'Error' ? 'torry-error' : 'torry-note') + '">' + escapeHtml(o.Message) + '</div>' : '')
+                    + '</div>';
+            }).join('');
+            instance.view.querySelector('.torry-fs-ops').innerHTML = html || '<div class="torry-empty" style="padding:.6em 0;">Aucun déplacement récent.</div>';
+            var running = ops.some(function (o) { return o.State === 'Running' || o.State === 'Pending'; });
+            if (hadRunning && !running && instance.activeTab === 'files') {
+                instance.browse(instance.fs.root, instance.fs.path);
+            }
+        });
+    };
+
+    // ---- réglages : dossiers de destination
+
+    View.prototype.renderDestinationRows = function (destinations) {
+        this.view.querySelector('.torry-dests').innerHTML = '';
+        destinations.forEach(this.addDestinationRow, this);
+    };
+
+    View.prototype.addDestinationRow = function (d) {
+        var row = document.createElement('div');
+        row.className = 'torry-dest-row';
+        row.setAttribute('data-id', d.Id || newId());
+        var options = CONTENT_TYPES.map(function (t) {
+            return '<option value="' + t[0] + '"' + (t[0] === d.ContentType ? ' selected' : '') + '>' + escapeHtml(t[1]) + '</option>';
+        }).join('');
+        row.innerHTML = '<input class="torry-input" data-dest="Name" type="text" placeholder="Nom (ex. Films)" value="' + escapeHtml(d.Name || '') + '" />'
+            + '<select class="torry-input" data-dest="ContentType">' + options + '</select>'
+            + '<input class="torry-input" data-dest="Path" type="text" placeholder="/media/films" spellcheck="false" value="' + escapeHtml(d.Path || '') + '" />'
+            + '<button type="button" class="torry-btn torry-btn-small" data-dest-remove="1" title="Retirer">Retirer</button>';
+        this.view.querySelector('.torry-dests').appendChild(row);
+    };
+
+    View.prototype.collectDestinations = function () {
+        var result = [];
+        this.view.querySelectorAll('.torry-dest-row').forEach(function (row) {
+            var name = row.querySelector('[data-dest="Name"]').value.trim();
+            var path = row.querySelector('[data-dest="Path"]').value.trim();
+            if (!name && !path) {
+                return;
+            }
+            result.push({
+                Id: row.getAttribute('data-id'),
+                Name: name,
+                ContentType: row.querySelector('[data-dest="ContentType"]').value,
+                Path: path
+            });
+        });
+        return result;
+    };
+
+    View.prototype.importLibraries = function () {
+        var instance = this;
+        api('GET', 'Torry/Libraries').then(function (libraries) {
+            var existing = instance.collectDestinations().map(function (d) { return d.Path; });
+            var names = instance.collectDestinations().map(function (d) { return d.Name.toLowerCase(); });
+            var added = 0;
+            (libraries || []).forEach(function (lib) {
+                (lib.Locations || []).forEach(function (location, i) {
+                    if (existing.indexOf(location) >= 0) {
+                        return;
+                    }
+                    var name = lib.Name + ((lib.Locations || []).length > 1 ? ' ' + (i + 1) : '');
+                    while (names.indexOf(name.toLowerCase()) >= 0) {
+                        name += ' bis';
+                    }
+                    names.push(name.toLowerCase());
+                    var type = CONTENT_TYPES.some(function (t) { return t[0] === lib.ContentType; }) ? lib.ContentType : 'mixed';
+                    instance.addDestinationRow({ Id: newId(), Name: name, ContentType: type, Path: location });
+                    added++;
+                });
+            });
+            var message = instance.view.querySelector('.torry-settings-message');
+            message.innerHTML = '<div class="torry-warn">' + escapeHtml(added
+                ? added + ' bibliothèque(s) ajoutée(s). Vérifiez puis cliquez sur « Enregistrer ».'
+                : 'Aucune nouvelle bibliothèque à importer.') + '</div>';
+        }, function (err) {
+            return readError(err).then(function (m) { instance.notify(m, true); });
+        });
     };
 
     return View;

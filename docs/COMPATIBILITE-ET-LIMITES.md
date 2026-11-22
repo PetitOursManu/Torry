@@ -91,6 +91,21 @@ serveur Emby, pas l'application.
 - **Cache de la page après une mise à jour** : Emby identifie la page par la version du plugin. Chaque
   version publiée de Torry change donc de numéro, et le navigateur recharge la page tout seul. Si une page
   semble ancienne après une mise à jour, rechargez complètement l'onglet (Ctrl+F5).
+- **Explorateur de fichiers** : il permet de déplacer, renommer et créer des dossiers, mais **pas de supprimer**
+  (la suppression passe par « Supprimer… » sur une tâche). Les liens symboliques sont masqués et jamais suivis :
+  un déplacement entre volumes ne recopie pas les liens qu'un dossier contient. La liste d'un dossier est
+  limitée à 2000 éléments.
+- **Déplacements entre volumes** : copie suivie d'une suppression, exécutée en arrière-plan et un déplacement à
+  la fois. Un gros dossier peut prendre plusieurs minutes, pendant lesquelles les autres déplacements attendent.
+  Le déplacement d'un fichier seul n'affiche sa progression qu'à la fin (copie faite par .NET).
+- **Déplacer un fichier en partage** arrête le partage de la tâche concernée. Un fichier sorti du dossier de sa
+  tâche n'est plus géré par celle-ci : il n'est pas effacé par « Supprimer avec les fichiers ».
+- **Destination supprimée des réglages** alors qu'un téléchargement la visait : la finalisation se fait dans
+  le dossier « terminés », et le journal le signale.
+- **Montage de la DLL dans `/config/plugins`** sur un conteneur neuf : Docker crée alors ce dossier avec
+  `root` comme propriétaire, et Emby ne peut plus enregistrer les réglages des plugins. Torry l'indique
+  clairement. Correction : `chown 1000:1000 /config/plugins` dans le conteneur, ou installez la DLL avant
+  le premier démarrage.
 - **Mises à jour en direct** : l'interface interroge le serveur toutes les 2 secondes tant que la page est
   ouverte. Il n'y a pas de notifications.
 - **Langue** : l'interface est en français uniquement.

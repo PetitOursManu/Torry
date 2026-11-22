@@ -8,6 +8,7 @@ using MonoTorrent;
 using MonoTorrent.Client;
 using PetitOurs.Torry.Core;
 using PetitOurs.Torry.Engine;
+using PetitOurs.Torry.Files;
 using PetitOurs.Torry.Persistence;
 using Xunit;
 using Xunit.Abstractions;
@@ -142,7 +143,7 @@ namespace PetitOurs.Torry.Tests
             Assert.Equal("AwaitingSelection", task.State);
             Assert.False(Directory.Exists(Path.Combine(_incomplete, task.Id)), "aucune donnée avant la sélection");
 
-            var files = await manager.GetFilesAsync(task.Id);
+            var files = (await manager.GetFilesAsync(task.Id)).Files;
             Assert.Equal(3, files.Count);
             var selected = files.Where(f => f.IsVideo).Select(f => f.Index).ToList();
             Assert.Equal(2, selected.Count);
@@ -276,11 +277,62 @@ namespace PetitOurs.Torry.Tests
             Assert.Equal(0, written);
 
             // Sélection puis téléchargement normal.
-            var movieIndex = (await manager.GetFilesAsync(task.Id)).Single(f => f.Path == "Mon Film (2024).mkv").Index;
+            var movieIndex = (await manager.GetFilesAsync(task.Id)).Files.Single(f => f.Path == "Mon Film (2024).mkv").Index;
             await manager.StartWithSelectionAsync(task.Id, new[] { movieIndex });
             await ConnectToSeederAsync(manager, task.Id);
             await TestSupport.WaitUntilAsync(() => View(manager, task.Id).State == "Completed", Timeout, "téléchargement après sélection");
             Assert.Equal(TestSupport.Sha256(Source("Mon Film (2024).mkv")), TestSupport.Sha256(Path.Combine(_completed, "Mon Film (2024)", "Mon Film (2024).mkv")));
+            await manager.StopAsync();
+        }
+
+        [Fact]
+        public async Task Download_into_destination_then_move_while_seeding_updates_the_task()
+        {
+            var films = Path.Combine(_root, "media", "films");
+            var archives = Path.Combine(_root, "media", "archives");
+            var options = Options(seed: true);
+            options.Destinations.Add(new DestinationFolder { Id = "films", Name = "Films", ContentType = MediaTypes.Movies, Path = films });
+            options.Destinations.Add(new DestinationFolder { Id = "archives", Name = "Archives", ContentType = MediaTypes.Mixed, Path = archives });
+            Directory.CreateDirectory(films);
+            Directory.CreateDirectory(archives);
+
+            var manager = NewManager(options);
+            await manager.StartAsync();
+            var service = new FileOperationsService(manager, _notifier, _log);
+
+            var task = await manager.AddTorrentFileAsync(_torrentBytes);
+            var files = await manager.GetFilesAsync(task.Id);
+            Assert.Equal("films", files.SuggestedDestinationId);
+            Assert.Equal(MediaTypes.Movies, files.SuggestedContentType);
+
+            await manager.StartWithSelectionAsync(task.Id, files.Files.Where(f => f.IsVideo).Select(f => f.Index), "films");
+            await ConnectToSeederAsync(manager, task.Id);
+            await TestSupport.WaitUntilAsync(() => View(manager, task.Id).State == "Seeding", Timeout, "téléchargement vers la destination Films");
+
+            var finalDir = Path.Combine(films, "Mon Film (2024)");
+            Assert.True(File.Exists(Path.Combine(finalDir, "Mon Film (2024).mkv")), "finalisé dans la destination");
+            Assert.Equal("Films", View(manager, task.Id).DestinationName);
+            Assert.Contains(manager.GetStatus().Roots, r => r.Id == "films" && r.Available);
+
+            // Déplacement du dossier de la tâche pendant le partage : le partage s'arrête, la tâche suit le dossier.
+            var op = service.StartMove("films", "Mon Film (2024)", "archives", "", null);
+            await TestSupport.WaitUntilAsync(() => service.GetOperations().Single(o => o.Id == op.Id).State is "Done" or "Error", Timeout, "déplacement");
+            var done = service.GetOperations().Single(o => o.Id == op.Id);
+            Assert.True(done.State == "Done", done.Message);
+            Assert.Contains("Partage arrêté", done.Message);
+            Assert.Equal("Completed", View(manager, task.Id).State);
+            Assert.False(Directory.Exists(finalDir));
+            Assert.Equal(TestSupport.Sha256(Source("Mon Film (2024).mkv")), TestSupport.Sha256(Path.Combine(archives, "Mon Film (2024)", "Mon Film (2024).mkv")));
+            Assert.Contains(_notifier.RefreshedNow, p => p.EndsWith("Mon Film (2024)", StringComparison.Ordinal));
+
+            // Navigation dans la destination.
+            var listing = service.List("archives", "Mon Film (2024)");
+            Assert.Contains(listing.Entries, e => e.Name == "Extras" && e.IsDirectory);
+
+            // La tâche a suivi : la suppression avec fichiers efface bien les fichiers au nouvel emplacement.
+            var result = await manager.RemoveAsync(task.Id, deleteFiles: true, confirmation: task.Id);
+            Assert.True(result.DeletedFiles >= 2, "les 2 vidéos (+ un éventuel fragment du fichier non sélectionné)");
+            Assert.False(Directory.Exists(Path.Combine(archives, "Mon Film (2024)")));
             await manager.StopAsync();
         }
 

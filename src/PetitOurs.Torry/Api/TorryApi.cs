@@ -7,6 +7,7 @@ using MediaBrowser.Model.Services;
 using PetitOurs.Torry.Core;
 using PetitOurs.Torry.Emby;
 using PetitOurs.Torry.Engine;
+using PetitOurs.Torry.Files;
 
 namespace PetitOurs.Torry.Api
 {
@@ -36,9 +37,9 @@ namespace PetitOurs.Torry.Api
         public string Data { get; set; }
     }
 
-    [Route("/Torry/Tasks/{Id}/Files", "GET", Summary = "Fichiers d'une tâche")]
+    [Route("/Torry/Tasks/{Id}/Files", "GET", Summary = "Fichiers d'une tâche et destination conseillée")]
     [Authenticated(Roles = "admin")]
-    public class GetTorryTaskFiles : IReturn<List<FileView>>
+    public class GetTorryTaskFiles : IReturn<TaskFilesView>
     {
         public string Id { get; set; }
     }
@@ -51,6 +52,9 @@ namespace PetitOurs.Torry.Api
 
         /// <summary>Indices des fichiers sélectionnés, séparés par des virgules.</summary>
         public string SelectedFiles { get; set; }
+
+        /// <summary>Dossier de destination (vide = téléchargements terminés).</summary>
+        public string DestinationId { get; set; }
     }
 
     [Route("/Torry/Tasks/{Id}/Pause", "POST")]
@@ -92,6 +96,55 @@ namespace PetitOurs.Torry.Api
     {
     }
 
+    [Route("/Torry/Libraries", "GET", Summary = "Bibliothèques Emby (pour préremplir les destinations)")]
+    [Authenticated(Roles = "admin")]
+    public class GetTorryLibraries : IReturn<List<LibraryInfo>>
+    {
+    }
+
+    [Route("/Torry/Files", "GET", Summary = "Contenu d'un dossier (racine + chemin relatif)")]
+    [Authenticated(Roles = "admin")]
+    public class GetTorryFiles : IReturn<DirectoryListingView>
+    {
+        public string Root { get; set; }
+
+        public string Path { get; set; }
+    }
+
+    [Route("/Torry/Files/Move", "POST", Summary = "Déplace ou renomme un fichier ou un dossier (en arrière-plan)")]
+    [Authenticated(Roles = "admin")]
+    public class MoveTorryFile : IReturn<MoveOperationView>
+    {
+        public string SourceRoot { get; set; }
+
+        public string SourcePath { get; set; }
+
+        public string TargetRoot { get; set; }
+
+        /// <summary>Dossier de destination, relatif à TargetRoot.</summary>
+        public string TargetPath { get; set; }
+
+        /// <summary>Nouveau nom (facultatif).</summary>
+        public string NewName { get; set; }
+    }
+
+    [Route("/Torry/Files/Folder", "POST", Summary = "Crée un dossier")]
+    [Authenticated(Roles = "admin")]
+    public class CreateTorryFolder : IReturn<FileEntryView>
+    {
+        public string Root { get; set; }
+
+        public string Path { get; set; }
+
+        public string Name { get; set; }
+    }
+
+    [Route("/Torry/Files/Operations", "GET", Summary = "Déplacements récents ou en cours")]
+    [Authenticated(Roles = "admin")]
+    public class GetTorryFileOperations : IReturn<List<MoveOperationView>>
+    {
+    }
+
     [Route("/Torry/Settings", "GET")]
     [Authenticated(Roles = "admin")]
     public class GetTorrySettings : IReturn<TorryOptions>
@@ -129,6 +182,9 @@ namespace PetitOurs.Torry.Api
         public bool AutoStartAfterMetadata { get; set; }
 
         public bool RefreshLibraryOnComplete { get; set; }
+
+        /// <summary>Destinations au format JSON : [{"Id","Name","ContentType","Path"}].</summary>
+        public string DestinationsJson { get; set; }
     }
 
     public class TorryService : IService, IRequiresRequest
@@ -197,7 +253,7 @@ namespace PetitOurs.Torry.Api
                     indices.Add(index);
                 }
 
-                return m.StartWithSelectionAsync(request.Id, indices);
+                return m.StartWithSelectionAsync(request.Id, indices, request.DestinationId);
             });
         }
 
@@ -210,6 +266,22 @@ namespace PetitOurs.Torry.Api
         public Task<object> Post(DeleteTorryTask request) => Run(m => m.RemoveAsync(request.Id, request.DeleteFiles, request.Confirmation));
 
         public Task<object> Post(RefreshTorryLibrary request) => Run(m => Task.FromResult(m.RefreshLibraryNow()));
+
+        public object Get(GetTorryLibraries request)
+        {
+            AssertAdministrator();
+            return Manager().GetLibraries();
+        }
+
+        public object Get(GetTorryFiles request) => Guard(() => Files().List(request.Root, request.Path));
+
+        public object Post(MoveTorryFile request) =>
+            Guard(() => Files().StartMove(request.SourceRoot, request.SourcePath, request.TargetRoot, request.TargetPath, request.NewName));
+
+        public object Post(CreateTorryFolder request) =>
+            Guard(() => new FileEntryView { Name = request.Name, IsDirectory = true, Category = "folder", Path = Files().CreateFolder(request.Root, request.Path, request.Name) });
+
+        public object Get(GetTorryFileOperations request) => Guard(() => Files().GetOperations());
 
         public object Get(GetTorrySettings request)
         {
@@ -235,7 +307,8 @@ namespace PetitOurs.Torry.Api
                 SeedRatioLimit = request.SeedRatioLimit,
                 SeedTimeLimitMinutes = request.SeedTimeLimitMinutes,
                 AutoStartAfterMetadata = request.AutoStartAfterMetadata,
-                RefreshLibraryOnComplete = request.RefreshLibraryOnComplete
+                RefreshLibraryOnComplete = request.RefreshLibraryOnComplete,
+                Destinations = ParseDestinations(request.DestinationsJson)
             };
 
             try
@@ -249,8 +322,64 @@ namespace PetitOurs.Torry.Api
 
             var plugin = Plugin.Instance;
             plugin.Configuration.CopyFrom(options);
-            plugin.SaveConfiguration();
+            try
+            {
+                plugin.SaveConfiguration();
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException || ex is System.IO.IOException)
+            {
+                // Cas typique : /config/plugins créé par Docker (propriétaire root) lors du montage de la DLL.
+                throw new ArgumentException("Réglages appliqués jusqu'au prochain redémarrage, mais impossible de les enregistrer : "
+                    + DiskErrors.Describe(ex) + " Vérifiez que le dossier /config/plugins appartient à l'utilisateur d'Emby (chown 1000:1000).");
+            }
+
             return plugin.Configuration.ToOptions();
+        }
+
+        private static List<DestinationFolder> ParseDestinations(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return new List<DestinationFolder>();
+            }
+
+            try
+            {
+                var list = System.Text.Json.JsonSerializer.Deserialize<List<DestinationFolder>>(json) ?? new List<DestinationFolder>();
+                foreach (var d in list)
+                {
+                    d.Name = d.Name?.Trim();
+                    d.Path = d.Path?.Trim();
+                    if (string.IsNullOrEmpty(d.Id))
+                    {
+                        d.Id = Guid.NewGuid().ToString("N").Substring(0, 12);
+                    }
+                }
+
+                return list;
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                throw new ArgumentException("Liste des destinations illisible.");
+            }
+        }
+
+        private object Guard<T>(Func<T> action)
+        {
+            AssertAdministrator();
+            try
+            {
+                return action();
+            }
+            catch (Exception ex) when (ex is FileOperationException || ex is UnsafePathException || ex is TorryUserException)
+            {
+                throw new ArgumentException(ex.Message);
+            }
+        }
+
+        private static FileOperationsService Files()
+        {
+            return TorryEntryPoint.Files ?? throw new ArgumentException("Le moteur Torry n'est pas encore démarré.");
         }
 
         private async Task<object> Run<T>(Func<TorrentTaskManager, Task<T>> action)
@@ -260,7 +389,7 @@ namespace PetitOurs.Torry.Api
             {
                 return await action(Manager()).ConfigureAwait(false);
             }
-            catch (TorryUserException ex)
+            catch (Exception ex) when (ex is TorryUserException || ex is FileOperationException || ex is UnsafePathException)
             {
                 // Emby renvoie ArgumentException en HTTP 400 avec le message.
                 throw new ArgumentException(ex.Message);

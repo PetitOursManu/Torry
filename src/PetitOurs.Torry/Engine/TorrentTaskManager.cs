@@ -190,14 +190,21 @@ namespace PetitOurs.Torry.Engine
 
         public StatusView GetStatus() => _status;
 
-        public async Task<IReadOnlyList<FileView>> GetFilesAsync(string id)
+        public async Task<TaskFilesView> GetFilesAsync(string id)
         {
             await _gate.WaitAsync().ConfigureAwait(false);
             try
             {
                 var rt = Find(id);
                 var files = rt.Manager?.HasMetadata == true ? rt.Manager.Files : null;
-                return rt.Record.Files.Select(f => new FileView
+                var pairs = rt.Record.Files.Select(f => new KeyValuePair<string, long>(f.Path, f.Length)).ToList();
+                var suggested = MediaTypes.SuggestDestination(_options.Destinations, pairs);
+                var view = new TaskFilesView
+                {
+                    SuggestedContentType = MediaTypes.SuggestContentType(pairs),
+                    SuggestedDestinationId = suggested?.Id
+                };
+                view.Files = rt.Record.Files.Select(f => new FileView
                 {
                     Index = f.Index,
                     Path = f.Path,
@@ -208,6 +215,7 @@ namespace PetitOurs.Torry.Engine
                         ? Math.Round(files[f.Index].BitField.PercentComplete, 1)
                         : (f.FinalPath != null ? 100 : 0)
                 }).ToList();
+                return view;
             }
             finally
             {
@@ -294,7 +302,10 @@ namespace PetitOurs.Torry.Engine
         }
 
         /// <summary>Confirme la sélection des fichiers et place la tâche en file d'attente.</summary>
-        public async Task<TaskView> StartWithSelectionAsync(string id, IEnumerable<int> selectedIndices)
+        public Task<TaskView> StartWithSelectionAsync(string id, IEnumerable<int> selectedIndices) => StartWithSelectionAsync(id, selectedIndices, null);
+
+        /// <param name="destinationId">Dossier de destination (null ou vide = téléchargements terminés).</param>
+        public async Task<TaskView> StartWithSelectionAsync(string id, IEnumerable<int> selectedIndices, string destinationId)
         {
             await _gate.WaitAsync().ConfigureAwait(false);
             try
@@ -318,7 +329,13 @@ namespace PetitOurs.Torry.Engine
                     throw new TorryUserException("Sélection de fichiers invalide.");
                 }
 
+                if (!string.IsNullOrEmpty(destinationId) && _options.FindDestination(destinationId) == null)
+                {
+                    throw new TorryUserException("Dossier de destination inconnu.");
+                }
+
                 ApplySelection(r, selection);
+                r.DestinationId = string.IsNullOrEmpty(destinationId) ? null : destinationId;
                 r.State = TaskState.Queued;
                 r.ResumeState = TaskState.Queued;
                 await ProcessQueueAsync().ConfigureAwait(false);
@@ -507,6 +524,143 @@ namespace PetitOurs.Torry.Engine
             }
         }
 
+        // ------------------------------------------------------------------ explorateur de fichiers
+
+        /// <summary>Racines navigables : « Téléchargements terminés » puis chaque destination configurée.</summary>
+        public IReadOnlyList<BrowseRoot> GetBrowseRoots()
+        {
+            var options = _options;
+            var roots = new List<BrowseRoot>();
+            if (!string.IsNullOrWhiteSpace(options.CompletedDirectory) && Path.IsPathFullyQualified(options.CompletedDirectory))
+            {
+                roots.Add(new BrowseRoot
+                {
+                    Id = BrowseRoot.CompletedId,
+                    Name = "Téléchargements terminés",
+                    Path = PathGuard.NormalizeDirectory(options.CompletedDirectory)
+                });
+            }
+
+            foreach (var destination in options.Destinations ?? new List<DestinationFolder>())
+            {
+                if (!string.IsNullOrWhiteSpace(destination.Path) && Path.IsPathFullyQualified(destination.Path))
+                {
+                    roots.Add(new BrowseRoot
+                    {
+                        Id = destination.Id,
+                        Name = destination.Name,
+                        Path = PathGuard.NormalizeDirectory(destination.Path),
+                        ContentType = destination.ContentType
+                    });
+                }
+            }
+
+            return roots;
+        }
+
+        public BrowseRoot FindRoot(string id)
+        {
+            return GetBrowseRoots().FirstOrDefault(r => string.Equals(r.Id, id, StringComparison.Ordinal))
+                ?? throw new FileOperationException("Dossier racine inconnu.");
+        }
+
+        public IReadOnlyList<LibraryInfo> GetLibraries() => _library.GetLibraries();
+
+        /// <summary>
+        /// Avant un déplacement : refuse si une tâche finalise les fichiers concernés, et arrête le partage des tâches
+        /// dont des fichiers vont être déplacés (le moteur ne peut plus les lire à l'ancien emplacement).
+        /// Renvoie une note pour l'utilisateur (ou null).
+        /// </summary>
+        public async Task<string> BeforeMoveAsync(string source)
+        {
+            await _gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                var stopped = new List<string>();
+                foreach (var rt in _tasks.ToList())
+                {
+                    var r = rt.Record;
+                    if (!TouchesTask(r, source))
+                    {
+                        continue;
+                    }
+
+                    if (r.State == TaskState.Finalizing || (r.State == TaskState.Error && r.ResumeState == TaskState.Finalizing))
+                    {
+                        throw new FileOperationException("« " + r.Name + " » est en cours de finalisation : réessayez une fois la tâche terminée.");
+                    }
+
+                    if (rt.Manager != null)
+                    {
+                        await FinishSeedingAsync(rt, "Partage arrêté : fichiers déplacés depuis l'explorateur.").ConfigureAwait(false);
+                        stopped.Add(r.Name);
+                    }
+                }
+
+                RebuildStatus();
+                return stopped.Count == 0 ? null : "Partage arrêté pour : " + string.Join(", ", stopped) + ".";
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+
+        /// <summary>
+        /// Après un déplacement réussi : met à jour les chemins des tâches concernées. Si le dossier de la tâche a été
+        /// déplacé, la tâche le suit (suppression avec fichiers toujours possible) ; un fichier sorti du dossier de la
+        /// tâche n'est plus géré par celle-ci.
+        /// </summary>
+        public async Task AfterMoveAsync(string source, string target, string targetRoot)
+        {
+            await _gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                foreach (var rt in _tasks)
+                {
+                    var r = rt.Record;
+                    if (!TouchesTask(r, source))
+                    {
+                        continue;
+                    }
+
+                    if (!string.IsNullOrEmpty(r.FinalDirectory) && PathGuard.IsSameOrInside(source, r.FinalDirectory))
+                    {
+                        r.FinalDirectory = Rebase(r.FinalDirectory, source, target);
+                        r.CompletedRoot = PathGuard.NormalizeDirectory(targetRoot);
+                    }
+
+                    foreach (var entry in r.Files.Where(f => !string.IsNullOrEmpty(f.FinalPath) && PathGuard.IsSameOrInside(source, f.FinalPath)))
+                    {
+                        var moved = Rebase(entry.FinalPath, source, target);
+                        entry.FinalPath = !string.IsNullOrEmpty(r.FinalDirectory) && PathGuard.IsInside(r.FinalDirectory, moved) ? moved : null;
+                    }
+                }
+
+                SaveNow();
+                RebuildStatus();
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+
+        private static bool TouchesTask(TaskRecord r, string source)
+        {
+            return (!string.IsNullOrEmpty(r.FinalDirectory) && PathGuard.IsSameOrInside(source, r.FinalDirectory))
+                || r.Files.Any(f => !string.IsNullOrEmpty(f.FinalPath) && PathGuard.IsSameOrInside(source, f.FinalPath));
+        }
+
+        private static string Rebase(string path, string oldPrefix, string newPrefix)
+        {
+            var normalized = Path.GetFullPath(path);
+            var prefix = PathGuard.NormalizeDirectory(oldPrefix);
+            return string.Equals(normalized.TrimEnd('/', '\\'), prefix, StringComparison.Ordinal)
+                ? PathGuard.NormalizeDirectory(newPrefix)
+                : Path.Combine(PathGuard.NormalizeDirectory(newPrefix), normalized.Substring(prefix.Length).TrimStart('/', '\\'));
+        }
+
         /// <summary>Actualise immédiatement la ou les bibliothèques Emby qui contiennent le dossier des téléchargements terminés.</summary>
         public LibraryRefreshResult RefreshLibraryNow()
         {
@@ -535,6 +689,15 @@ namespace PetitOurs.Torry.Engine
             if (incompleteError != null)
             {
                 throw new TorryUserException("Dossier « en cours » : " + incompleteError);
+            }
+
+            foreach (var destination in options.Destinations ?? new List<DestinationFolder>())
+            {
+                var destinationError = FileManager.CheckWritable(destination.Path);
+                if (destinationError != null)
+                {
+                    throw new TorryUserException("Destination « " + destination.Name + " » (" + destination.Path + ") : " + destinationError);
+                }
             }
 
             var completedError = FileManager.CheckWritable(options.CompletedDirectory);
@@ -882,6 +1045,9 @@ namespace PetitOurs.Torry.Engine
             if (_options.AutoStartAfterMetadata)
             {
                 ApplySelection(rt.Record, new HashSet<int>(rt.Record.Files.Select(f => f.Index)));
+                rt.Record.DestinationId = MediaTypes.SuggestDestination(
+                    _options.Destinations,
+                    rt.Record.Files.Select(f => new KeyValuePair<string, long>(f.Path, f.Length)))?.Id;
                 rt.Record.State = TaskState.Queued;
                 rt.Record.ResumeState = TaskState.Queued;
                 await ProcessQueueAsync().ConfigureAwait(false);
@@ -1134,8 +1300,14 @@ namespace PetitOurs.Torry.Engine
             {
                 if (string.IsNullOrEmpty(r.FinalDirectory))
                 {
-                    r.CompletedRoot = _files.CompletedRoot;
-                    r.FinalDirectory = _files.CreateFinalDirectory(r.Name, "torrent-" + r.InfoHash.Substring(0, 8));
+                    var destination = _options.FindDestination(r.DestinationId);
+                    if (r.DestinationId != null && destination == null)
+                    {
+                        _log.Warn("Torry: destination de « " + r.Name + " » supprimée des réglages : finalisation dans « terminés ».");
+                    }
+
+                    r.CompletedRoot = destination != null ? PathGuard.NormalizeDirectory(destination.Path) : _files.CompletedRoot;
+                    r.FinalDirectory = FileManager.CreateFinalDirectory(r.CompletedRoot, r.Name, "torrent-" + r.InfoHash.Substring(0, 8));
                     SaveNow();
                 }
                 else
@@ -1412,6 +1584,21 @@ namespace PetitOurs.Torry.Engine
                 status.Engine.Warnings.Add("Aucune bibliothèque Emby ne contient le dossier des téléchargements terminés : les vidéos n'apparaîtront pas automatiquement.");
             }
 
+            foreach (var root in GetBrowseRoots())
+            {
+                var exists = Directory.Exists(root.Path);
+                status.Roots.Add(new RootView
+                {
+                    Id = root.Id,
+                    Name = root.Name,
+                    ContentType = root.ContentType,
+                    ContentTypeLabel = root.ContentType == null ? null : MediaTypes.Label(root.ContentType),
+                    Path = root.Path,
+                    Available = exists,
+                    FreeBytes = exists ? FileManager.GetAvailableFreeSpace(root.Path) : null
+                });
+            }
+
             foreach (var rt in _tasks.OrderByDescending(t => t.Record.AddedUtc))
             {
                 var view = BuildView(rt);
@@ -1441,6 +1628,7 @@ namespace PetitOurs.Torry.Engine
                 ErrorMessage = r.State == TaskState.Error ? r.ErrorMessage : null,
                 LibraryNote = r.LibraryNote,
                 FinalFolder = r.FinalDirectory == null ? null : Path.GetFileName(r.FinalDirectory),
+                DestinationName = _options.FindDestination(r.DestinationId)?.Name,
                 AddedUtc = r.AddedUtc,
                 CompletedUtc = r.CompletedUtc,
                 UploadedBytes = r.UploadedBytes,

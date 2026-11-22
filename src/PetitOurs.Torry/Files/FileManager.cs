@@ -76,11 +76,15 @@ namespace PetitOurs.Torry.Files
         /// Prépare le dossier de destination final : &lt;terminés&gt;/&lt;nom unique&gt;.
         /// Le dossier est créé immédiatement pour réserver le nom (aucun écrasement possible).
         /// </summary>
-        public string CreateFinalDirectory(string torrentName, string fallbackName)
+        public string CreateFinalDirectory(string torrentName, string fallbackName) => CreateFinalDirectory(CompletedRoot, torrentName, fallbackName);
+
+        /// <summary>Même chose dans une racine quelconque (dossier de destination).</summary>
+        public static string CreateFinalDirectory(string root, string torrentName, string fallbackName)
         {
-            Directory.CreateDirectory(CompletedRoot);
+            root = PathGuard.NormalizeDirectory(root);
+            Directory.CreateDirectory(root);
             var folderName = PathGuard.SanitizeFolderName(torrentName, fallbackName);
-            var path = PathGuard.GetUniqueDirectory(CompletedRoot, folderName);
+            var path = PathGuard.GetUniqueDirectory(root, folderName);
             Directory.CreateDirectory(path);
             return path;
         }
